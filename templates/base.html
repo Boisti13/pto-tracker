@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}PTO Tracker{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="wrap">
+    <header class="topbar">
+      <h1>PTO Tracker</h1>
+      {% if session.get('logged_in') %}
+      <nav>
+        <a href="{{ url_for('dashboard') }}">Dashboard</a> &middot;
+        <a href="{{ url_for('allowance') }}">Allowance</a> &middot;
+        <a href="{{ url_for('logout') }}">Log out</a>
+      </nav>
+      {% endif %}
+    </header>
+    {% block content %}{% endblock %}
+  </div>
+</body>
+</html>

@@ -1,0 +1,16 @@
+[Unit]
+Description=PTO Tracker
+After=network.target
+
+[Service]
+Type=simple
+User=pto
+Group=pto
+WorkingDirectory=/opt/pto-tracker
+Environment=PTO_DB_PATH=/opt/pto-tracker/data/pto.db
+ExecStart=/opt/pto-tracker/venv/bin/gunicorn --workers 2 --bind 0.0.0.0:5000 app:app
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

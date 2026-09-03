@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+
+<div class="year-switch">
+  {% for y in years %}
+    <a href="{{ url_for('dashboard', year=y) }}" class="{{ 'active' if y == year else '' }}">{{ y }}</a>
+  {% endfor %}
+  <a href="{{ url_for('dashboard', year=year - 1) }}">&laquo;</a>
+  <a href="{{ url_for('dashboard', year=year + 1) }}">&raquo;</a>
+</div>
+
+<div class="card">
+  <div class="stats">
+    <div class="stat">
+      <div class="value">{{ allowance | round(1) }}</div>
+      <div class="label">Allowance {{ year }}</div>
+    </div>
+    <div class="stat">
+      <div class="value">{{ carryover | round(1) }}</div>
+      <div class="label">Carryover</div>
+    </div>
+    <div class="stat">
+      <div class="value">{{ used }}</div>
+      <div class="label">Used</div>
+    </div>
+    <div class="stat remaining {{ 'negative' if remaining < 0 else '' }}">
+      <div class="value">{{ remaining | round(1) }}</div>
+      <div class="label">Remaining</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+    <h3 style="margin:0;">PTO entries in {{ year }}</h3>
+    <a class="btn" href="{{ url_for('add_entry') }}">+ Add entry</a>
+  </div>
+  {% if entries %}
+  <table>
+    <thead><tr><th>Start</th><th>End</th><th>Days</th><th>Note</th><th></th></tr></thead>
+    <tbody>
+      {% for e in entries %}
+      <tr>
+        <td>{{ e.start_date }}</td>
+        <td>{{ e.end_date }}</td>
+        <td>{{ e.days }}</td>
+        <td>{{ e.note or "" }}</td>
+        <td>
+          <form class="inline" method="post" action="{{ url_for('delete_entry', entry_id=e.id, year=year) }}"
+                onsubmit="return confirm('Delete this entry?');">
+            <button class="btn danger" type="submit">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No PTO recorded for {{ year }} yet.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3 style="margin-top:0;">Upcoming RLP public holidays</h3>
+  {% if upcoming_holidays %}
+  <ul class="holiday-list">
+    {% for d, name in upcoming_holidays %}
+    <li><span>{{ name }}</span><span class="muted">{{ d.strftime('%a, %d %b %Y') }}</span></li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">No more holidays this year.</p>
+  {% endif %}
+</div>
+
+{% endblock %}

@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Add PTO{% endblock %}
+{% block content %}
+<div class="card" style="max-width:420px;">
+  <h2>Add PTO entry</h2>
+  {% if error %}<div class="error">{{ error }}</div>{% endif %}
+  <form method="post">
+    <label for="start_date">Start date</label>
+    <input id="start_date" name="start_date" type="date" value="{{ today }}" required>
+    <label for="end_date">End date</label>
+    <input id="end_date" name="end_date" type="date" value="{{ today }}" required>
+    <label for="note">Note (optional)</label>
+    <input id="note" name="note" placeholder="e.g. summer trip">
+    <p class="muted" style="margin-top:10px;">Weekends and RLP public holidays are excluded automatically.</p>
+    <p style="margin-top:16px;">
+      <button class="btn" type="submit">Save</button>
+      <a class="btn secondary" href="{{ url_for('dashboard') }}">Cancel</a>
+    </p>
+  </form>
+</div>
+{% endblock %}
