@@ -29,6 +29,9 @@
       <div class="label">Remaining</div>
     </div>
   </div>
+  <p class="muted" style="text-align:center; margin:16px 0 0;">
+    of the {{ used }} used: <strong>{{ taken }}</strong> actually taken &middot; <strong>{{ planned }}</strong> still just planned
+  </p>
 </div>
 
 <div class="card">
@@ -38,14 +41,23 @@
   </div>
   {% if entries %}
   <table>
-    <thead><tr><th>Start</th><th>End</th><th>Days</th><th>Note</th><th></th></tr></thead>
+    <thead><tr><th>Start</th><th>End</th><th>Days</th><th>Note</th><th>Status</th><th></th></tr></thead>
     <tbody>
       {% for e in entries %}
       <tr>
-        <td>{{ e.start_date }}</td>
-        <td>{{ e.end_date }}</td>
+        <td>{{ e.start_display }}</td>
+        <td>{{ e.end_display }}</td>
         <td>{{ e.days }}</td>
         <td>{{ e.note or "" }}</td>
+        <td>
+          <form class="inline" method="post" action="{{ url_for('update_entry_status', entry_id=e.id, year=year) }}">
+            <select name="status" class="status-select status-{{ e.status }}" onchange="this.form.submit()">
+              {% for s in statuses %}
+              <option value="{{ s }}" {{ "selected" if e.status == s else "" }}>{{ s | capitalize }}</option>
+              {% endfor %}
+            </select>
+          </form>
+        </td>
         <td>
           <form class="inline" method="post" action="{{ url_for('delete_entry', entry_id=e.id, year=year) }}"
                 onsubmit="return confirm('Delete this entry?');">
@@ -62,7 +74,7 @@
 </div>
 
 <div class="card">
-  <h3 style="margin-top:0;">Upcoming RLP public holidays</h3>
+  <h3 style="margin-top:0;">Upcoming public holidays ({{ holiday_state_name }})</h3>
   {% if upcoming_holidays %}
   <ul class="holiday-list">
     {% for d, name in upcoming_holidays %}

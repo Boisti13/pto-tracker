@@ -11,7 +11,13 @@
     <input id="end_date" name="end_date" type="date" value="{{ today }}" required>
     <label for="note">Note (optional)</label>
     <input id="note" name="note" placeholder="e.g. summer trip">
-    <p class="muted" style="margin-top:10px;">Weekends and RLP public holidays are excluded automatically.</p>
+    <label for="status">Status</label>
+    <select id="status" name="status">
+      {% for s in statuses %}
+      <option value="{{ s }}">{{ s | capitalize }}</option>
+      {% endfor %}
+    </select>
+    <p class="muted" style="margin-top:10px;">Weekends and {{ holiday_state_name }} public holidays are excluded automatically. Both planned and taken days count against your balance.</p>
     <p style="margin-top:16px;">
       <button class="btn" type="submit">Save</button>
       <a class="btn secondary" href="{{ url_for('dashboard') }}">Cancel</a>

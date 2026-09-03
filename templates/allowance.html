@@ -1,7 +1,20 @@
 {% extends "base.html" %}
-{% block title %}Allowance{% endblock %}
+{% block title %}Settings{% endblock %}
 {% block content %}
-<div class="card" style="max-width:420px;">
+<div class="card">
+  <h2>Public holidays</h2>
+  <p class="muted">Which German state's public holidays to exclude when counting days used.</p>
+  <form method="post" action="{{ url_for('set_holiday_state') }}">
+    <label for="state">State</label>
+    <select id="state" name="state" onchange="this.form.submit()">
+      {% for code, name in state_options %}
+      <option value="{{ code }}" {{ "selected" if code == holiday_state else "" }}>{{ name }}</option>
+      {% endfor %}
+    </select>
+  </form>
+</div>
+
+<div class="card">
   <h2>Set yearly allowance</h2>
   <p class="muted">Default allowance is {{ default_allowance }} days/year unless overridden below for a specific year.</p>
   {% if error %}<div class="error">{{ error }}</div>{% endif %}
@@ -12,11 +25,8 @@
     <input id="days" name="days" type="number" step="0.5" required>
     <p style="margin-top:16px;"><button class="btn" type="submit">Save</button></p>
   </form>
-</div>
-
-<div class="card">
-  <h3 style="margin-top:0;">Overrides</h3>
   {% if allowances %}
+  <h3 class="card-subhead">Overrides</h3>
   <table>
     <thead><tr><th>Year</th><th>Days</th></tr></thead>
     <tbody>
@@ -25,12 +35,10 @@
       {% endfor %}
     </tbody>
   </table>
-  {% else %}
-  <p class="muted">No per-year overrides set.</p>
   {% endif %}
 </div>
 
-<div class="card" style="max-width:420px;">
+<div class="card">
   <h2>Carryover override</h2>
   <p class="muted">Carryover is automatic: whatever is left of a year's allowance (allowance + its own carryover &minus; used) rolls into the next year on its own — nothing to do for that. Only set a value here if you need to override the automatic amount for a specific year, e.g. your employer caps how many days may carry over.</p>
   <form method="post" action="{{ url_for('carryover') }}">
@@ -40,11 +48,8 @@
     <input id="co_days" name="days" type="number" step="0.5" required>
     <p style="margin-top:16px;"><button class="btn" type="submit">Save override</button></p>
   </form>
-</div>
-
-<div class="card">
-  <h3 style="margin-top:0;">Carryover overrides</h3>
   {% if carryovers %}
+  <h3 class="card-subhead">Overrides</h3>
   <table>
     <thead><tr><th>Year</th><th>Days</th></tr></thead>
     <tbody>
@@ -53,8 +58,6 @@
       {% endfor %}
     </tbody>
   </table>
-  {% else %}
-  <p class="muted">None set — every year is using the automatic carryover.</p>
   {% endif %}
 </div>
 {% endblock %}

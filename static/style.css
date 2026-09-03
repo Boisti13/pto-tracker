@@ -65,6 +65,17 @@ nav a:hover, header.topbar a:hover { text-decoration: underline; }
 .stat.remaining .value { color: var(--success); }
 .stat.remaining.negative .value { color: var(--danger); }
 
+.card-subhead {
+  margin: 24px 0 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  font-size: 0.85rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-weight: 600;
+}
+
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 8px 4px; border-bottom: 1px solid var(--border); font-size: 0.92rem; }
 th { color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; }
@@ -120,3 +131,15 @@ input, select {
 @media (max-width: 480px) {
   .stats { grid-template-columns: repeat(2, 1fr); }
 }
+
+.status-select {
+  width: auto;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+.status-select.status-taken { background: #dcfce7; color: #166534; }
+.status-select.status-planned { background: #dbeafe; color: #1e40af; }

@@ -7,10 +7,12 @@ from functools import wraps
 from flask import Flask, g, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from holidays import count_pto_days, rlp_holidays
+from holidays import DEFAULT_STATE, GERMAN_STATES, count_pto_days, state_holidays
 
 DB_PATH = os.environ.get("PTO_DB_PATH", os.path.join(os.path.dirname(__file__), "data", "pto.db"))
 DEFAULT_ALLOWANCE = 30
+ENTRY_STATUSES = ("planned", "taken")
+DISPLAY_DATE_FORMAT = "%d-%m-%Y"
 
 app = Flask(__name__)
 
@@ -56,6 +58,10 @@ def init_db():
         );
         """
     )
+    columns = {row[1] for row in db.execute("PRAGMA table_info(pto_entries)")}
+    if "status" not in columns:
+        db.execute("ALTER TABLE pto_entries ADD COLUMN status TEXT NOT NULL DEFAULT 'planned'")
+        db.commit()
     if db.execute("SELECT 1 FROM settings WHERE key = 'secret_key'").fetchone() is None:
         db.execute(
             "INSERT INTO settings (key, value) VALUES ('secret_key', ?)",
@@ -84,6 +90,11 @@ def admin_configured():
     return get_setting("admin_username") is not None
 
 
+def get_holiday_state():
+    state = get_setting("holiday_state", DEFAULT_STATE)
+    return state if state in GERMAN_STATES else DEFAULT_STATE
+
+
 def get_allowance(year):
     row = get_db().execute("SELECT days FROM allowances WHERE year = ?", (year,)).fetchone()
     if row:
@@ -92,10 +103,11 @@ def get_allowance(year):
 
 
 def _entries_with_days(year):
+    state = get_holiday_state()
     entries = get_db().execute(
         "SELECT * FROM pto_entries "
         "WHERE strftime('%Y', start_date) = ? OR strftime('%Y', end_date) = ? "
-        "ORDER BY start_date DESC",
+        "ORDER BY start_date ASC",
         (str(year), str(year)),
     ).fetchall()
     result = []
@@ -104,8 +116,15 @@ def _entries_with_days(year):
         end = datetime.strptime(e["end_date"], "%Y-%m-%d").date()
         clipped_start = max(start, date(year, 1, 1))
         clipped_end = min(end, date(year, 12, 31))
-        days = count_pto_days(clipped_start, clipped_end)
-        result.append({**dict(e), "days": days})
+        days = count_pto_days(clipped_start, clipped_end, state)
+        result.append(
+            {
+                **dict(e),
+                "days": days,
+                "start_display": start.strftime(DISPLAY_DATE_FORMAT),
+                "end_display": end.strftime(DISPLAY_DATE_FORMAT),
+            }
+        )
     return result
 
 
@@ -208,11 +227,14 @@ def dashboard():
     year = int(request.args.get("year", date.today().year))
     entry_rows = _entries_with_days(year)
     used = sum(e["days"] for e in entry_rows)
+    taken = sum(e["days"] for e in entry_rows if e["status"] == "taken")
+    planned = used - taken
 
     allowance = get_allowance(year)
     carryover = get_carryover(year)
+    state = get_holiday_state()
     upcoming_holidays = sorted(
-        (d, name) for d, name in rlp_holidays(date.today().year).items() if d >= date.today()
+        (d, name) for d, name in state_holidays(date.today().year, state).items() if d >= date.today()
     )[:5]
 
     return render_template(
@@ -221,10 +243,14 @@ def dashboard():
         allowance=allowance,
         carryover=carryover,
         used=used,
+        taken=taken,
+        planned=planned,
         remaining=allowance + carryover - used,
         entries=entry_rows,
         upcoming_holidays=upcoming_holidays,
         years=_years_with_data(),
+        statuses=ENTRY_STATUSES,
+        holiday_state_name=GERMAN_STATES[state],
     )
 
 
@@ -243,6 +269,9 @@ def add_entry():
         start_date = request.form.get("start_date", "")
         end_date = request.form.get("end_date", "")
         note = request.form.get("note", "").strip()
+        status = request.form.get("status", "planned")
+        if status not in ENTRY_STATUSES:
+            status = "planned"
         try:
             start = datetime.strptime(start_date, "%Y-%m-%d").date()
             end = datetime.strptime(end_date, "%Y-%m-%d").date()
@@ -253,12 +282,30 @@ def add_entry():
                 error = "End date must be on or after the start date."
             else:
                 get_db().execute(
-                    "INSERT INTO pto_entries (start_date, end_date, note, created_at) VALUES (?, ?, ?, ?)",
-                    (start_date, end_date, note, datetime.utcnow().isoformat()),
+                    "INSERT INTO pto_entries (start_date, end_date, note, status, created_at) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (start_date, end_date, note, status, datetime.utcnow().isoformat()),
                 )
                 get_db().commit()
                 return redirect(url_for("dashboard", year=start.year))
-    return render_template("add_entry.html", error=error, today=date.today().isoformat())
+    return render_template(
+        "add_entry.html",
+        error=error,
+        today=date.today().isoformat(),
+        statuses=ENTRY_STATUSES,
+        holiday_state_name=GERMAN_STATES[get_holiday_state()],
+    )
+
+
+@app.route("/entries/<int:entry_id>/status", methods=["POST"])
+@login_required
+def update_entry_status(entry_id):
+    status = request.form.get("status", "")
+    year = request.args.get("year", date.today().year)
+    if status in ENTRY_STATUSES:
+        get_db().execute("UPDATE pto_entries SET status = ? WHERE id = ?", (status, entry_id))
+        get_db().commit()
+    return redirect(url_for("dashboard", year=year))
 
 
 @app.route("/entries/<int:entry_id>/delete", methods=["POST"])
@@ -298,7 +345,18 @@ def allowance():
         carryovers=carryover_rows,
         default_allowance=get_setting("default_allowance", DEFAULT_ALLOWANCE),
         current_year=date.today().year,
+        state_options=sorted(GERMAN_STATES.items(), key=lambda kv: kv[1]),
+        holiday_state=get_holiday_state(),
     )
+
+
+@app.route("/settings/holiday-state", methods=["POST"])
+@login_required
+def set_holiday_state():
+    state = request.form.get("state", "")
+    if state in GERMAN_STATES:
+        set_setting("holiday_state", state)
+    return redirect(url_for("allowance"))
 
 
 @app.route("/carryover", methods=["POST"])

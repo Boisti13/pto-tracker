@@ -1,8 +1,8 @@
 # PTO Tracker
 
 A tiny, self-hosted PTO/vacation tracker: single login, SQLite storage, and
-German public holidays (Rhineland-Palatinate) baked in. No accounts system, no
-database server, no build step — just Python and SQLite.
+German public holidays baked in for all 16 federal states. No accounts
+system, no database server, no build step — just Python and SQLite.
 
 ![Dashboard screenshot](screenshot.png)
 
@@ -10,9 +10,14 @@ database server, no build step — just Python and SQLite.
 
 - **Single login.** First visit walks you through creating one admin account
   (hashed password, no config file editing required).
-- **RLP public holidays, computed automatically.** Weekends and Rhineland-Palatinate
-  holidays (incl. Fronleichnam, Reformationstag, Allerheiligen) are excluded
-  automatically when counting days used — for any year, no yearly maintenance.
+- **German public holidays, computed automatically.** Pick your federal state
+  in Settings (defaults to Rheinland-Pfalz) — weekends and that state's
+  holidays are excluded automatically when counting days used, for any year,
+  no yearly maintenance.
+- **Planned vs. taken.** Every entry has a status. Both count against your
+  balance, but the dashboard breaks out how many of the used days were
+  actually taken versus still just planned — change the status inline as
+  plans firm up.
 - **Automatic carryover.** Whatever's left of one year's balance
   (allowance + its own carryover − used) rolls into the next year on its own.
   You can still override it per year (e.g. if your employer caps carryover).
@@ -76,8 +81,8 @@ pct exec 111 -- /root/pto-tracker/install.sh
 
 Everything lives in one SQLite file (`data/pto.db` under the install
 directory, overridable with the `PTO_DB_PATH` environment variable). There's
-no other config file — admin credentials, allowance, and carryover overrides
-are all managed from the web UI itself.
+no other config file — admin credentials, holiday state, allowance, and
+carryover overrides are all managed from the Settings page in the web UI.
 
 ## Notes
 
