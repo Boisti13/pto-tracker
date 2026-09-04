@@ -35,21 +35,21 @@
 </div>
 
 <div class="card">
-  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+  <div style="display:flex; flex-wrap:wrap; gap:10px; justify-content:space-between; align-items:center; margin-bottom:12px;">
     <h3 style="margin:0;">PTO entries in {{ year }}</h3>
     <a class="btn" href="{{ url_for('add_entry') }}">+ Add entry</a>
   </div>
   {% if entries %}
-  <table>
+  <table class="entries-table">
     <thead><tr><th>Start</th><th>End</th><th>Days</th><th>Note</th><th>Status</th><th></th></tr></thead>
     <tbody>
       {% for e in entries %}
       <tr>
-        <td>{{ e.start_display }}</td>
-        <td>{{ e.end_display }}</td>
-        <td>{{ e.days }}</td>
-        <td>{{ e.note or "" }}</td>
-        <td>
+        <td data-label="Start">{{ e.start_display }}</td>
+        <td data-label="End">{{ e.end_display }}</td>
+        <td data-label="Days">{{ e.days }}</td>
+        <td data-label="Note">{{ e.note or "" }}</td>
+        <td data-label="Status">
           <form class="inline" method="post" action="{{ url_for('update_entry_status', entry_id=e.id, year=year) }}">
             <select name="status" class="status-select status-{{ e.status }}" onchange="this.form.submit()">
               {% for s in statuses %}
@@ -58,7 +58,7 @@
             </select>
           </form>
         </td>
-        <td>
+        <td data-label="">
           <form class="inline" method="post" action="{{ url_for('delete_entry', entry_id=e.id, year=year) }}"
                 onsubmit="return confirm('Delete this entry?');">
             <button class="btn danger" type="submit">Delete</button>

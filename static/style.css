@@ -118,7 +118,7 @@ input, select {
 }
 
 .muted { color: var(--muted); font-size: 0.85rem; }
-.year-switch { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; }
+.year-switch { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 16px; }
 .year-switch a { padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); text-decoration: none; color: var(--text); font-size: 0.85rem; }
 .year-switch a.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 
@@ -130,6 +130,50 @@ input, select {
 
 @media (max-width: 480px) {
   .stats { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 640px) {
+  .wrap { padding: 16px 12px 48px; }
+  .card { padding: 16px; }
+
+  header.topbar { flex-wrap: wrap; gap: 8px; }
+  nav a, header.topbar a { font-size: 0.95rem; }
+
+  /* Prevent iOS Safari from auto-zooming on input focus. */
+  input, select { font-size: 16px; }
+
+  .btn { padding: 11px 18px; font-size: 0.95rem; }
+  .status-select { padding: 8px 10px; }
+
+  table.entries-table thead { display: none; }
+  table.entries-table, table.entries-table tbody, table.entries-table tr, table.entries-table td {
+    display: block;
+    width: 100%;
+  }
+  table.entries-table tr {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 10px;
+  }
+  table.entries-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 0;
+    border-bottom: none;
+  }
+  table.entries-table td[data-label]:not([data-label=""])::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-weight: 600;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    flex-shrink: 0;
+  }
+  table.entries-table td[data-label="Note"] { word-break: break-word; }
 }
 
 .status-select {
