@@ -363,7 +363,9 @@ def dashboard():
         (d, name) for d, name in state_holidays(date.today().year, state).items() if d >= date.today()
     )[:5]
 
-    overtime_balances_hhmm = {acc: hours_to_hhmm(get_overtime_balance(acc)) for acc in OVERTIME_ACCOUNTS}
+    overtime_balances = {acc: get_overtime_balance(acc) for acc in OVERTIME_ACCOUNTS}
+    daily = get_daily_hours()
+    overtime_balances_days = {acc: (round(v / daily, 1) if daily else None) for acc, v in overtime_balances.items()}
 
     return render_template(
         "dashboard.html",
@@ -379,7 +381,8 @@ def dashboard():
         years=_years_with_data(),
         statuses=ENTRY_STATUSES,
         holiday_state_name=GERMAN_STATES[state],
-        overtime_balances_hhmm=overtime_balances_hhmm,
+        overtime_balances_hhmm={acc: hours_to_hhmm(v) for acc, v in overtime_balances.items()},
+        overtime_balances_days=overtime_balances_days,
     )
 
 
