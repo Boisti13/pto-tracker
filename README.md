@@ -17,11 +17,20 @@ system, no database server, no build step — just Python and SQLite.
 - **Planned vs. taken.** Every entry has a status. Both count against your
   balance, but the dashboard breaks out how many of the used days were
   actually taken versus still just planned — change the status inline as
-  plans firm up.
+  plans firm up. Entries can be edited or deleted after the fact, and
+  overlapping date ranges are rejected.
 - **Automatic carryover.** Whatever's left of one year's balance
   (allowance + its own carryover − used) rolls into the next year on its own.
   You can still override it per year (e.g. if your employer caps carryover).
 - **Per-year allowance overrides**, for contract changes etc.
+- **Overtime tracking**, on its own tab. Track two independent hour balances
+  (e.g. a main account and a second bank like AMA) in H:MM format, set your
+  weekly paid hours, and log time off taken against either account. Only
+  entries still marked "planned" count against the balance shown, so you can
+  freely re-sync the balance from your employer's system without
+  double-counting anything already reflected in it.
+- **CSV export** for both PTO and overtime entries.
+- Mobile-friendly — usable on a phone down to a 320px-wide screen.
 - No JavaScript framework, no external CDN dependency — works entirely on
   your own network.
 
@@ -86,16 +95,21 @@ carryover overrides are all managed from the Settings page in the web UI.
 
 ## Notes
 
-- **LAN-only by design.** There's no HTTPS and no CSRF protection — fine for
-  a personal tool reachable only on your own network. If you want to reach it
-  from outside your LAN, put it behind a reverse proxy (e.g. Caddy, nginx, or
+- **LAN-only by design.** There's no HTTPS, and CSRF protection is a minimal
+  session-token check rather than anything hardened — fine for a personal
+  tool reachable only on your own network. If you want to reach it from
+  outside your LAN, put it behind a reverse proxy (e.g. Caddy, nginx, or
   Nginx Proxy Manager) with TLS rather than exposing the port directly.
-- **Backups.** Everything is in the one SQLite file mentioned above — back
-  that up however you like (snapshot, cron `cp`, etc.).
-- **Changing the password.** There's no in-app "change password" flow yet.
-  Simplest reset: stop the service, delete the `admin_username` /
-  `admin_password_hash` rows from the `settings` table in `pto.db` (or delete
-  the DB file entirely to start over), then restart so `/setup` runs again.
+- **Backups.** Download a full copy of the SQLite file any time from the
+  "Backup" section of Settings (safe to do while the app is running), or
+  back up `data/pto.db` yourself however you like (snapshot, cron `cp`,
+  etc.).
+- **Changing the password.** Settings has an in-app "Change password" form
+  if you know your current one. If you've forgotten it: stop the service,
+  delete the `admin_username` / `admin_password_hash` rows from the
+  `settings` table in `pto.db` (or delete the DB file entirely to start
+  over — this also wipes your PTO/overtime data, so prefer the two-row
+  delete), then restart so `/setup` runs again.
 
 ## License
 
