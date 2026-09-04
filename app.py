@@ -128,22 +128,28 @@ def get_holiday_state():
     return state if state in GERMAN_STATES else DEFAULT_STATE
 
 
-EXTRA_HOLIDAYS = [("Heiligabend", 12, 24), ("Silvester", 12, 31)]
+EXTRA_HOLIDAYS = [("dec24", "Heiligabend", 12, 24), ("dec31", "Silvester", 12, 31)]
 
 
-def get_extra_holidays_enabled():
-    return get_setting("extra_holidays_dec", "0") == "1"
+def get_extra_holiday_enabled(key):
+    value = get_setting(f"extra_holiday_{key}")
+    if value is None:
+        # Fall back to the old combined on/off toggle this replaced, so a
+        # setting made before the two were split apart still applies.
+        value = get_setting("extra_holidays_dec", "0")
+    return value == "1"
 
 
 def extra_holidays_for_years(start_year, end_year):
-    """24 Dec and 31 Dec, if the user has opted in — not official public
-    holidays in any German state, but commonly treated as non-working days.
+    """24 Dec and/or 31 Dec, for whichever the user has opted into — neither
+    is an official public holiday in any German state, but both are
+    commonly treated as non-working days.
     """
-    if not get_extra_holidays_enabled():
-        return {}
     result = {}
-    for y in range(start_year, end_year + 1):
-        for name, month, day in EXTRA_HOLIDAYS:
+    for key, name, month, day in EXTRA_HOLIDAYS:
+        if not get_extra_holiday_enabled(key):
+            continue
+        for y in range(start_year, end_year + 1):
             result[date(y, month, day)] = name
     return result
 
@@ -382,7 +388,7 @@ def dashboard():
     carryover = get_carryover(year)
     state = get_holiday_state()
     all_holidays = {**state_holidays(date.today().year, state), **extra_holidays_for_years(date.today().year, date.today().year)}
-    upcoming_holidays = sorted((d, name) for d, name in all_holidays.items() if d >= date.today())[:5]
+    upcoming_holidays = sorted((d, name) for d, name in all_holidays.items() if d >= date.today())
 
     overtime_balances = {acc: get_overtime_balance(acc) for acc in OVERTIME_ACCOUNTS}
     daily = get_daily_hours()
@@ -763,7 +769,8 @@ def allowance():
         current_year=date.today().year,
         state_options=sorted(GERMAN_STATES.items(), key=lambda kv: kv[1]),
         holiday_state=get_holiday_state(),
-        extra_holidays_enabled=get_extra_holidays_enabled(),
+        extra_dec24_enabled=get_extra_holiday_enabled("dec24"),
+        extra_dec31_enabled=get_extra_holiday_enabled("dec31"),
     )
 
 
@@ -773,7 +780,8 @@ def set_holiday_state():
     state = request.form.get("state", "")
     if state in GERMAN_STATES:
         set_setting("holiday_state", state)
-    set_setting("extra_holidays_dec", "1" if request.form.get("extra_holidays") == "1" else "0")
+    set_setting("extra_holiday_dec24", "1" if request.form.get("extra_dec24") == "1" else "0")
+    set_setting("extra_holiday_dec31", "1" if request.form.get("extra_dec31") == "1" else "0")
     return redirect(url_for("allowance"))
 
 

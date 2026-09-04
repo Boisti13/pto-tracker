@@ -13,9 +13,14 @@
       {% endfor %}
     </select>
     <label class="checkbox-row">
-      <input type="checkbox" name="extra_holidays" value="1" onchange="this.form.submit()"
-             {{ "checked" if extra_holidays_enabled else "" }}>
-      <span>Also treat 24 Dec (Heiligabend) and 31 Dec (Silvester) as non-working days</span>
+      <input type="checkbox" name="extra_dec24" value="1" onchange="this.form.submit()"
+             {{ "checked" if extra_dec24_enabled else "" }}>
+      <span>Also treat 24 Dec (Heiligabend) as a non-working day</span>
+    </label>
+    <label class="checkbox-row">
+      <input type="checkbox" name="extra_dec31" value="1" onchange="this.form.submit()"
+             {{ "checked" if extra_dec31_enabled else "" }}>
+      <span>Also treat 31 Dec (Silvester) as a non-working day</span>
     </label>
   </form>
 </div>
