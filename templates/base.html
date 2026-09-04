@@ -13,6 +13,7 @@
       {% if session.get('logged_in') %}
       <nav>
         <a href="{{ url_for('dashboard') }}">Dashboard</a> &middot;
+        <a href="{{ url_for('overtime') }}">Overtime</a> &middot;
         <a href="{{ url_for('allowance') }}">Settings</a> &middot;
         <a href="{{ url_for('logout') }}">Log out</a>
       </nav>

@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Overtime{% endblock %}
+{% block content %}
+
+<div class="card">
+  <h2 style="margin-top:0;">Overtime settings</h2>
+  <form method="post" action="{{ url_for('overtime_settings') }}">
+    <label for="weekly_hours">Weekly paid hours</label>
+    <input id="weekly_hours" name="weekly_hours" type="number" step="0.1" value="{{ weekly_hours }}" required>
+    <p class="muted" style="margin-top:4px;">Based on a 5-day work week &rarr; {{ daily_hours | round(2) }}h/day.</p>
+
+    <label for="balance_main">Current overtime balance (h)</label>
+    <input id="balance_main" name="balance_main" type="number" step="0.1" value="{{ balances.main }}" required>
+
+    <label for="balance_ama">Current AMA balance (h)</label>
+    <input id="balance_ama" name="balance_ama" type="number" step="0.1" value="{{ balances.ama }}" required>
+
+    <p style="margin-top:16px;"><button class="btn" type="submit">Save</button></p>
+  </form>
+</div>
+
+<div class="card">
+  <div class="stats">
+    <div class="stat">
+      <div class="value">{{ balances.main | round(1) }}</div>
+      <div class="label">Overtime balance</div>
+    </div>
+    <div class="stat remaining {{ 'negative' if remaining.main < 0 else '' }}">
+      <div class="value">{{ remaining.main | round(1) }}</div>
+      <div class="label">After planned</div>
+    </div>
+    <div class="stat">
+      <div class="value">{{ balances.ama | round(1) }}</div>
+      <div class="label">AMA balance</div>
+    </div>
+    <div class="stat remaining {{ 'negative' if remaining.ama < 0 else '' }}">
+      <div class="value">{{ remaining.ama | round(1) }}</div>
+      <div class="label">After planned</div>
+    </div>
+  </div>
+  <p class="muted" style="text-align:center; margin:16px 0 0;">
+    "After planned" subtracts only entries still marked <strong>planned</strong> below. Entries marked
+    <strong>taken</strong> don't subtract &mdash; update the balance above once your employer's system reflects them.
+  </p>
+</div>
+
+<div class="card">
+  <div class="card-header-row">
+    <h3 style="margin:0;">Time off covered by overtime</h3>
+    <a class="btn" href="{{ url_for('add_overtime_entry') }}">+ Add entry</a>
+  </div>
+  {% if entries %}
+  <table class="entries-table">
+    <thead><tr><th>Start</th><th>End</th><th>Hours</th><th>Note</th><th>Account</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+      {% for e in entries %}
+      <tr>
+        <td data-label="Start">{{ e.start_display }}</td>
+        <td data-label="End">{{ e.end_display }}</td>
+        <td data-label="Hours">{{ e.hours }}</td>
+        <td data-label="Note">{{ e.note or "" }}</td>
+        <td data-label="Account">{{ accounts[e.account] }}</td>
+        <td data-label="Status">
+          <form class="inline" method="post" action="{{ url_for('update_overtime_entry_status', entry_id=e.id) }}">
+            <select name="status" class="status-select status-{{ e.status }}" onchange="this.form.submit()">
+              {% for s in statuses %}
+              <option value="{{ s }}" {{ "selected" if e.status == s else "" }}>{{ s | capitalize }}</option>
+              {% endfor %}
+            </select>
+          </form>
+        </td>
+        <td class="actions-cell">
+          <form class="inline" method="post" action="{{ url_for('delete_overtime_entry', entry_id=e.id) }}"
+                onsubmit="return confirm('Delete this entry?');">
+            <button class="btn danger" type="submit">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No overtime time off recorded yet.</p>
+  {% endif %}
+</div>
+
+{% endblock %}

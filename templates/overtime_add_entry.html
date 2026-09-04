@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Add overtime entry{% endblock %}
+{% block content %}
+<div class="card" style="max-width:420px;">
+  <h2>Add time off (overtime)</h2>
+  {% if error %}<div class="error">{{ error }}</div>{% endif %}
+  <form method="post">
+    <label for="start_date">Start date</label>
+    <input id="start_date" name="start_date" type="date" value="{{ today }}" required>
+    <label for="end_date">End date</label>
+    <input id="end_date" name="end_date" type="date" value="{{ today }}" required>
+    <label for="note">Note (optional)</label>
+    <input id="note" name="note" placeholder="e.g. long weekend">
+    <label for="account">Deduct from</label>
+    <select id="account" name="account">
+      {% for code, name in accounts.items() %}
+      <option value="{{ code }}">{{ name }}</option>
+      {% endfor %}
+    </select>
+    <label for="status">Status</label>
+    <select id="status" name="status">
+      {% for s in statuses %}
+      <option value="{{ s }}">{{ s | capitalize }}</option>
+      {% endfor %}
+    </select>
+    <p class="muted" style="margin-top:10px;">
+      Weekends and {{ holiday_state_name }} public holidays are excluded automatically. Hours are computed from
+      your weekly paid hours ({{ daily_hours | round(2) }}h/day). Only <strong>planned</strong> entries count
+      against the balance shown on the Overtime page.
+    </p>
+    <p style="margin-top:16px;">
+      <button class="btn" type="submit">Save</button>
+      <a class="btn secondary" href="{{ url_for('overtime') }}">Cancel</a>
+    </p>
+  </form>
+</div>
+{% endblock %}

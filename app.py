@@ -11,7 +11,9 @@ from holidays import DEFAULT_STATE, GERMAN_STATES, count_pto_days, state_holiday
 
 DB_PATH = os.environ.get("PTO_DB_PATH", os.path.join(os.path.dirname(__file__), "data", "pto.db"))
 DEFAULT_ALLOWANCE = 30
+DEFAULT_WEEKLY_HOURS = 39.0
 ENTRY_STATUSES = ("planned", "taken")
+OVERTIME_ACCOUNTS = {"main": "Overtime", "ama": "AMA"}
 DISPLAY_DATE_FORMAT = "%d-%m-%Y"
 
 app = Flask(__name__)
@@ -54,6 +56,15 @@ def init_db():
             start_date TEXT NOT NULL,
             end_date TEXT NOT NULL,
             note TEXT,
+            created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS overtime_entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            start_date TEXT NOT NULL,
+            end_date TEXT NOT NULL,
+            note TEXT,
+            account TEXT NOT NULL DEFAULT 'main',
+            status TEXT NOT NULL DEFAULT 'planned',
             created_at TEXT NOT NULL
         );
         """
@@ -161,6 +172,38 @@ def get_carryover(year):
         return 0.0
     prev_remaining = get_allowance(prev_year) + get_carryover(prev_year) - compute_used(prev_year)
     return max(0.0, prev_remaining)
+
+
+def get_weekly_hours():
+    return float(get_setting("weekly_hours", DEFAULT_WEEKLY_HOURS))
+
+
+def get_daily_hours():
+    return get_weekly_hours() / 5
+
+
+def get_overtime_balance(account):
+    return float(get_setting(f"overtime_balance_{account}", 0))
+
+
+def _overtime_entries_with_hours():
+    state = get_holiday_state()
+    daily = get_daily_hours()
+    entries = get_db().execute("SELECT * FROM overtime_entries ORDER BY start_date DESC").fetchall()
+    result = []
+    for e in entries:
+        start = datetime.strptime(e["start_date"], "%Y-%m-%d").date()
+        end = datetime.strptime(e["end_date"], "%Y-%m-%d").date()
+        hours = round(count_pto_days(start, end, state) * daily, 2)
+        result.append(
+            {
+                **dict(e),
+                "hours": hours,
+                "start_display": start.strftime(DISPLAY_DATE_FORMAT),
+                "end_display": end.strftime(DISPLAY_DATE_FORMAT),
+            }
+        )
+    return result
 
 
 def login_required(view):
@@ -315,6 +358,104 @@ def delete_entry(entry_id):
     get_db().execute("DELETE FROM pto_entries WHERE id = ?", (entry_id,))
     get_db().commit()
     return redirect(url_for("dashboard", year=year))
+
+
+@app.route("/overtime")
+@login_required
+def overtime():
+    entries = _overtime_entries_with_hours()
+    balances = {acc: get_overtime_balance(acc) for acc in OVERTIME_ACCOUNTS}
+    planned = {acc: 0.0 for acc in OVERTIME_ACCOUNTS}
+    for e in entries:
+        if e["account"] in planned and e["status"] == "planned":
+            planned[e["account"]] += e["hours"]
+    remaining = {acc: balances[acc] - planned[acc] for acc in OVERTIME_ACCOUNTS}
+
+    return render_template(
+        "overtime.html",
+        entries=entries,
+        weekly_hours=get_weekly_hours(),
+        daily_hours=get_daily_hours(),
+        balances=balances,
+        remaining=remaining,
+        statuses=ENTRY_STATUSES,
+        accounts=OVERTIME_ACCOUNTS,
+    )
+
+
+@app.route("/overtime/settings", methods=["POST"])
+@login_required
+def overtime_settings():
+    try:
+        weekly_hours = float(request.form.get("weekly_hours"))
+        balance_main = float(request.form.get("balance_main"))
+        balance_ama = float(request.form.get("balance_ama"))
+    except (TypeError, ValueError):
+        pass
+    else:
+        set_setting("weekly_hours", str(weekly_hours))
+        set_setting("overtime_balance_main", str(balance_main))
+        set_setting("overtime_balance_ama", str(balance_ama))
+    return redirect(url_for("overtime"))
+
+
+@app.route("/overtime/entries/add", methods=["GET", "POST"])
+@login_required
+def add_overtime_entry():
+    error = None
+    if request.method == "POST":
+        start_date = request.form.get("start_date", "")
+        end_date = request.form.get("end_date", "")
+        note = request.form.get("note", "").strip()
+        account = request.form.get("account", "main")
+        status = request.form.get("status", "planned")
+        if account not in OVERTIME_ACCOUNTS:
+            account = "main"
+        if status not in ENTRY_STATUSES:
+            status = "planned"
+        try:
+            start = datetime.strptime(start_date, "%Y-%m-%d").date()
+            end = datetime.strptime(end_date, "%Y-%m-%d").date()
+        except ValueError:
+            error = "Please provide valid dates."
+        else:
+            if end < start:
+                error = "End date must be on or after the start date."
+            else:
+                get_db().execute(
+                    "INSERT INTO overtime_entries (start_date, end_date, note, account, status, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (start_date, end_date, note, account, status, datetime.utcnow().isoformat()),
+                )
+                get_db().commit()
+                return redirect(url_for("overtime"))
+    return render_template(
+        "overtime_add_entry.html",
+        error=error,
+        today=date.today().isoformat(),
+        statuses=ENTRY_STATUSES,
+        accounts=OVERTIME_ACCOUNTS,
+        daily_hours=get_daily_hours(),
+        holiday_state_name=GERMAN_STATES[get_holiday_state()],
+    )
+
+
+@app.route("/overtime/entries/<int:entry_id>/status", methods=["POST"])
+@login_required
+def update_overtime_entry_status(entry_id):
+    status = request.form.get("status", "")
+    if status in ENTRY_STATUSES:
+        get_db().execute("UPDATE overtime_entries SET status = ? WHERE id = ?", (status, entry_id))
+        get_db().commit()
+    return redirect(url_for("overtime"))
+
+
+@app.route("/overtime/entries/<int:entry_id>/delete", methods=["POST"])
+@login_required
+def delete_overtime_entry(entry_id):
+    get_db().execute("DELETE FROM overtime_entries WHERE id = ?", (entry_id,))
+    get_db().commit()
+    return redirect(url_for("overtime"))
 
 
 @app.route("/allowance", methods=["GET", "POST"])
