@@ -3,10 +3,11 @@ import io
 import os
 import secrets
 import sqlite3
+import tempfile
 from datetime import date, datetime
 from functools import wraps
 
-from flask import Flask, Response, flash, g, redirect, render_template, request, session, url_for
+from flask import Flask, Response, abort, flash, g, redirect, render_template, request, send_file, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from holidays import DEFAULT_STATE, GERMAN_STATES, count_pto_days, state_holidays
@@ -19,6 +20,25 @@ OVERTIME_ACCOUNTS = {"main": "Overtime", "ama": "AMA"}
 DISPLAY_DATE_FORMAT = "%d-%m-%Y"
 
 app = Flask(__name__)
+
+
+def get_csrf_token():
+    token = session.get("csrf_token")
+    if not token:
+        token = secrets.token_hex(16)
+        session["csrf_token"] = token
+    return token
+
+
+app.jinja_env.globals["csrf_token"] = get_csrf_token
+
+
+@app.before_request
+def check_csrf():
+    if request.method == "POST":
+        token = session.get("csrf_token")
+        if not token or request.form.get("csrf_token") != token:
+            abort(403)
 
 
 def get_db():
@@ -161,6 +181,18 @@ def _overtime_overlaps(start_date, end_date, exclude_id=None):
         query += " AND id != ?"
         params.append(exclude_id)
     return get_db().execute(query, params).fetchone() is not None
+
+
+def _overlap_kind(start_date, end_date, exclude_pto_id=None, exclude_overtime_id=None):
+    """Whether [start_date, end_date] overlaps an existing entry in either table.
+    Returns "PTO", "overtime", or None. A day off is a day off regardless of
+    which balance it draws from, so both tables are checked either way.
+    """
+    if _pto_overlaps(start_date, end_date, exclude_id=exclude_pto_id):
+        return "PTO"
+    if _overtime_overlaps(start_date, end_date, exclude_id=exclude_overtime_id):
+        return "overtime"
+    return None
 
 
 def _year_has_activity(year):
@@ -375,10 +407,11 @@ def add_entry():
         except ValueError:
             error = "Please provide valid dates."
         else:
+            overlap = _overlap_kind(start_date, end_date)
             if end < start:
                 error = "End date must be on or after the start date."
-            elif _pto_overlaps(start_date, end_date):
-                error = "This overlaps an existing PTO entry."
+            elif overlap:
+                error = f"This overlaps an existing {overlap} entry."
             else:
                 get_db().execute(
                     "INSERT INTO pto_entries (start_date, end_date, note, status, created_at) "
@@ -420,10 +453,11 @@ def edit_entry(entry_id):
         except ValueError:
             error = "Please provide valid dates."
         else:
+            overlap = _overlap_kind(start_date, end_date, exclude_pto_id=entry_id)
             if end < start:
                 error = "End date must be on or after the start date."
-            elif _pto_overlaps(start_date, end_date, exclude_id=entry_id):
-                error = "This overlaps an existing PTO entry."
+            elif overlap:
+                error = f"This overlaps an existing {overlap} entry."
             else:
                 db.execute(
                     "UPDATE pto_entries SET start_date = ?, end_date = ?, note = ?, status = ? WHERE id = ?",
@@ -547,10 +581,11 @@ def add_overtime_entry():
         except ValueError:
             error = "Please provide valid dates."
         else:
+            overlap = _overlap_kind(start_date, end_date)
             if end < start:
                 error = "End date must be on or after the start date."
-            elif _overtime_overlaps(start_date, end_date):
-                error = "This overlaps an existing overtime entry."
+            elif overlap:
+                error = f"This overlaps an existing {overlap} entry."
             else:
                 get_db().execute(
                     "INSERT INTO overtime_entries (start_date, end_date, note, account, status, created_at) "
@@ -604,10 +639,11 @@ def edit_overtime_entry(entry_id):
         except ValueError:
             error = "Please provide valid dates."
         else:
+            overlap = _overlap_kind(start_date, end_date, exclude_overtime_id=entry_id)
             if end < start:
                 error = "End date must be on or after the start date."
-            elif _overtime_overlaps(start_date, end_date, exclude_id=entry_id):
-                error = "This overlaps an existing overtime entry."
+            elif overlap:
+                error = f"This overlaps an existing {overlap} entry."
             else:
                 db.execute(
                     "UPDATE overtime_entries SET start_date = ?, end_date = ?, note = ?, account = ?, status = ? "
@@ -727,6 +763,22 @@ def carryover():
     return redirect(url_for("allowance"))
 
 
+@app.route("/allowance/<int:year>/delete", methods=["POST"])
+@login_required
+def delete_allowance(year):
+    get_db().execute("DELETE FROM allowances WHERE year = ?", (year,))
+    get_db().commit()
+    return redirect(url_for("allowance"))
+
+
+@app.route("/carryover/<int:year>/delete", methods=["POST"])
+@login_required
+def delete_carryover(year):
+    get_db().execute("DELETE FROM carryover WHERE year = ?", (year,))
+    get_db().commit()
+    return redirect(url_for("allowance"))
+
+
 @app.route("/account/password", methods=["POST"])
 @login_required
 def change_password():
@@ -743,6 +795,26 @@ def change_password():
         set_setting("admin_password_hash", generate_password_hash(new))
         flash("Password changed.", "success")
     return redirect(url_for("allowance"))
+
+
+@app.route("/backup.db")
+@login_required
+def download_backup():
+    fd, tmp_path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    src = sqlite3.connect(DB_PATH)
+    dst = sqlite3.connect(tmp_path)
+    src.backup(dst)
+    dst.close()
+    src.close()
+    response = send_file(
+        tmp_path,
+        as_attachment=True,
+        download_name=f"pto_backup_{date.today().isoformat()}.db",
+        mimetype="application/octet-stream",
+    )
+    response.call_on_close(lambda: os.remove(tmp_path))
+    return response
 
 
 def _load_secret_key():

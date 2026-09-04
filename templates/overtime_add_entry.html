@@ -5,6 +5,7 @@
   <h2>{{ 'Edit time off (overtime)' if entry else 'Add time off (overtime)' }}</h2>
   {% if error %}<div class="error">{{ error }}</div>{% endif %}
   <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label for="start_date">Start date</label>
     <input id="start_date" name="start_date" type="date" value="{{ entry.start_date if entry else today }}" required>
     <label for="end_date">End date</label>
