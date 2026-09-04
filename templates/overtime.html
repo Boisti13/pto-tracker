@@ -50,7 +50,16 @@
 <div class="card">
   <div class="card-header-row">
     <h3 style="margin:0;">Time off covered by overtime</h3>
-    <a class="btn" href="{{ url_for('add_overtime_entry') }}">+ Add entry</a>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <a class="btn secondary" href="{{ url_for('export_overtime_csv') }}">Export CSV</a>
+      <a class="btn" href="{{ url_for('add_overtime_entry') }}">+ Add entry</a>
+    </div>
+  </div>
+  <div class="year-switch">
+    <a href="{{ url_for('overtime') }}" class="{{ 'active' if not year_filter else '' }}">All</a>
+    {% for y in years %}
+    <a href="{{ url_for('overtime', year=y) }}" class="{{ 'active' if year_filter == y|string else '' }}">{{ y }}</a>
+    {% endfor %}
   </div>
   {% if entries %}
   <table class="entries-table">
@@ -64,7 +73,8 @@
         <td data-label="Note">{{ e.note or "" }}</td>
         <td data-label="Account">{{ accounts[e.account] }}</td>
         <td data-label="Status">
-          <form class="inline" method="post" action="{{ url_for('update_overtime_entry_status', entry_id=e.id) }}">
+          <form class="inline" method="post"
+                action="{{ url_for('update_overtime_entry_status', entry_id=e.id, year=year_filter) }}">
             <select name="status" class="status-select status-{{ e.status }}" onchange="this.form.submit()">
               {% for s in statuses %}
               <option value="{{ s }}" {{ "selected" if e.status == s else "" }}>{{ s | capitalize }}</option>
@@ -73,7 +83,9 @@
           </form>
         </td>
         <td class="actions-cell">
-          <form class="inline" method="post" action="{{ url_for('delete_overtime_entry', entry_id=e.id) }}"
+          <a class="btn edit" href="{{ url_for('edit_overtime_entry', entry_id=e.id) }}">Edit</a>
+          <form class="inline" method="post"
+                action="{{ url_for('delete_overtime_entry', entry_id=e.id, year=year_filter) }}"
                 onsubmit="return confirm('Delete this entry?');">
             <button class="btn danger" type="submit">Delete</button>
           </form>

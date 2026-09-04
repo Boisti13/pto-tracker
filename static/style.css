@@ -108,7 +108,11 @@ form.inline { display: inline; }
 .btn:hover { background: var(--accent-dark); }
 .btn.danger { background: transparent; color: var(--danger); padding: 4px 8px; font-size: 0.82rem; }
 .btn.danger:hover { text-decoration: underline; }
+.btn.edit { background: transparent; color: var(--accent); padding: 4px 8px; font-size: 0.82rem; }
+.btn.edit:hover { text-decoration: underline; }
 .btn.secondary { background: transparent; color: var(--accent); border: 1px solid var(--border); }
+
+.actions-cell > * + * { margin-left: 8px; }
 
 label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 4px; margin-top: 12px; }
 input, select {
@@ -129,6 +133,16 @@ input, select {
   font-size: 0.9rem;
 }
 
+.success {
+  background: #f0fdf4;
+  color: var(--success);
+  border: 1px solid #bbf7d0;
+  padding: 10px 14px;
+  border-radius: 6px;
+  margin-bottom: 16px;
+  font-size: 0.9rem;
+}
+
 .muted { color: var(--muted); font-size: 0.85rem; }
 .year-switch { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; }
 .year-switch a { padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); text-decoration: none; color: var(--text); font-size: 0.85rem; }
@@ -143,6 +157,8 @@ input, select {
 @media (max-width: 480px) {
   .stats { grid-template-columns: repeat(2, 1fr); }
 }
+
+.stats.stats-2 { grid-template-columns: repeat(2, 1fr); }
 
 @media (max-width: 640px) {
   .entries-table thead { display: none; }

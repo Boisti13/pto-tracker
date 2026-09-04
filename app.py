@@ -1,10 +1,12 @@
+import csv
+import io
 import os
 import secrets
 import sqlite3
 from datetime import date, datetime
 from functools import wraps
 
-from flask import Flask, g, redirect, render_template, request, session, url_for
+from flask import Flask, Response, flash, g, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from holidays import DEFAULT_STATE, GERMAN_STATES, count_pto_days, state_holidays
@@ -143,6 +145,24 @@ def compute_used(year):
     return sum(e["days"] for e in _entries_with_days(year))
 
 
+def _pto_overlaps(start_date, end_date, exclude_id=None):
+    query = "SELECT 1 FROM pto_entries WHERE start_date <= ? AND end_date >= ?"
+    params = [end_date, start_date]
+    if exclude_id is not None:
+        query += " AND id != ?"
+        params.append(exclude_id)
+    return get_db().execute(query, params).fetchone() is not None
+
+
+def _overtime_overlaps(start_date, end_date, exclude_id=None):
+    query = "SELECT 1 FROM overtime_entries WHERE start_date <= ? AND end_date >= ?"
+    params = [end_date, start_date]
+    if exclude_id is not None:
+        query += " AND id != ?"
+        params.append(exclude_id)
+    return get_db().execute(query, params).fetchone() is not None
+
+
 def _year_has_activity(year):
     db = get_db()
     if db.execute(
@@ -232,6 +252,11 @@ def _overtime_entries_with_hours():
     return result
 
 
+def _overtime_years_with_data():
+    rows = get_db().execute("SELECT DISTINCT strftime('%Y', start_date) AS y FROM overtime_entries").fetchall()
+    return sorted({int(r["y"]) for r in rows if r["y"]}, reverse=True)
+
+
 def login_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
@@ -306,6 +331,8 @@ def dashboard():
         (d, name) for d, name in state_holidays(date.today().year, state).items() if d >= date.today()
     )[:5]
 
+    overtime_balances_hhmm = {acc: hours_to_hhmm(get_overtime_balance(acc)) for acc in OVERTIME_ACCOUNTS}
+
     return render_template(
         "dashboard.html",
         year=year,
@@ -320,6 +347,7 @@ def dashboard():
         years=_years_with_data(),
         statuses=ENTRY_STATUSES,
         holiday_state_name=GERMAN_STATES[state],
+        overtime_balances_hhmm=overtime_balances_hhmm,
     )
 
 
@@ -349,6 +377,8 @@ def add_entry():
         else:
             if end < start:
                 error = "End date must be on or after the start date."
+            elif _pto_overlaps(start_date, end_date):
+                error = "This overlaps an existing PTO entry."
             else:
                 get_db().execute(
                     "INSERT INTO pto_entries (start_date, end_date, note, status, created_at) "
@@ -360,6 +390,51 @@ def add_entry():
     return render_template(
         "add_entry.html",
         error=error,
+        entry=None,
+        today=date.today().isoformat(),
+        statuses=ENTRY_STATUSES,
+        holiday_state_name=GERMAN_STATES[get_holiday_state()],
+    )
+
+
+@app.route("/entries/<int:entry_id>/edit", methods=["GET", "POST"])
+@login_required
+def edit_entry(entry_id):
+    db = get_db()
+    entry = db.execute("SELECT * FROM pto_entries WHERE id = ?", (entry_id,)).fetchone()
+    if entry is None:
+        return redirect(url_for("dashboard"))
+    entry = dict(entry)
+    error = None
+    if request.method == "POST":
+        start_date = request.form.get("start_date", "")
+        end_date = request.form.get("end_date", "")
+        note = request.form.get("note", "").strip()
+        status = request.form.get("status", "planned")
+        if status not in ENTRY_STATUSES:
+            status = "planned"
+        entry = {"id": entry_id, "start_date": start_date, "end_date": end_date, "note": note, "status": status}
+        try:
+            start = datetime.strptime(start_date, "%Y-%m-%d").date()
+            end = datetime.strptime(end_date, "%Y-%m-%d").date()
+        except ValueError:
+            error = "Please provide valid dates."
+        else:
+            if end < start:
+                error = "End date must be on or after the start date."
+            elif _pto_overlaps(start_date, end_date, exclude_id=entry_id):
+                error = "This overlaps an existing PTO entry."
+            else:
+                db.execute(
+                    "UPDATE pto_entries SET start_date = ?, end_date = ?, note = ?, status = ? WHERE id = ?",
+                    (start_date, end_date, note, status, entry_id),
+                )
+                db.commit()
+                return redirect(url_for("dashboard", year=start.year))
+    return render_template(
+        "add_entry.html",
+        error=error,
+        entry=entry,
         today=date.today().isoformat(),
         statuses=ENTRY_STATUSES,
         holiday_state_name=GERMAN_STATES[get_holiday_state()],
@@ -386,6 +461,24 @@ def delete_entry(entry_id):
     return redirect(url_for("dashboard", year=year))
 
 
+@app.route("/entries/export.csv")
+@login_required
+def export_pto_csv():
+    entries = get_db().execute(
+        "SELECT start_date, end_date, note, status FROM pto_entries ORDER BY start_date"
+    ).fetchall()
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["start_date", "end_date", "note", "status"])
+    for e in entries:
+        writer.writerow([e["start_date"], e["end_date"], e["note"] or "", e["status"]])
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=pto_entries.csv"},
+    )
+
+
 @app.route("/overtime", methods=["GET", "POST"])
 @login_required
 def overtime():
@@ -403,10 +496,16 @@ def overtime():
             set_setting("overtime_balance_ama", str(balance_ama))
             return redirect(url_for("overtime"))
 
-    entries = _overtime_entries_with_hours()
+    all_entries = _overtime_entries_with_hours()
+    year_filter = request.args.get("year")
+    if year_filter:
+        entries = [e for e in all_entries if e["start_date"][:4] == year_filter or e["end_date"][:4] == year_filter]
+    else:
+        entries = all_entries
+
     balances = {acc: get_overtime_balance(acc) for acc in OVERTIME_ACCOUNTS}
     planned = {acc: 0.0 for acc in OVERTIME_ACCOUNTS}
-    for e in entries:
+    for e in all_entries:
         if e["account"] in planned and e["status"] == "planned":
             planned[e["account"]] += e["hours"]
     remaining = {acc: balances[acc] - planned[acc] for acc in OVERTIME_ACCOUNTS}
@@ -415,6 +514,8 @@ def overtime():
         "overtime.html",
         error=error,
         entries=entries,
+        years=_overtime_years_with_data(),
+        year_filter=year_filter,
         weekly_hours=get_weekly_hours(),
         daily_hours=get_daily_hours(),
         balances=balances,
@@ -448,6 +549,8 @@ def add_overtime_entry():
         else:
             if end < start:
                 error = "End date must be on or after the start date."
+            elif _overtime_overlaps(start_date, end_date):
+                error = "This overlaps an existing overtime entry."
             else:
                 get_db().execute(
                     "INSERT INTO overtime_entries (start_date, end_date, note, account, status, created_at) "
@@ -459,6 +562,64 @@ def add_overtime_entry():
     return render_template(
         "overtime_add_entry.html",
         error=error,
+        entry=None,
+        today=date.today().isoformat(),
+        statuses=ENTRY_STATUSES,
+        accounts=OVERTIME_ACCOUNTS,
+        daily_hours=get_daily_hours(),
+        holiday_state_name=GERMAN_STATES[get_holiday_state()],
+    )
+
+
+@app.route("/overtime/entries/<int:entry_id>/edit", methods=["GET", "POST"])
+@login_required
+def edit_overtime_entry(entry_id):
+    db = get_db()
+    entry = db.execute("SELECT * FROM overtime_entries WHERE id = ?", (entry_id,)).fetchone()
+    if entry is None:
+        return redirect(url_for("overtime"))
+    entry = dict(entry)
+    error = None
+    if request.method == "POST":
+        start_date = request.form.get("start_date", "")
+        end_date = request.form.get("end_date", "")
+        note = request.form.get("note", "").strip()
+        account = request.form.get("account", "main")
+        status = request.form.get("status", "planned")
+        if account not in OVERTIME_ACCOUNTS:
+            account = "main"
+        if status not in ENTRY_STATUSES:
+            status = "planned"
+        entry = {
+            "id": entry_id,
+            "start_date": start_date,
+            "end_date": end_date,
+            "note": note,
+            "account": account,
+            "status": status,
+        }
+        try:
+            start = datetime.strptime(start_date, "%Y-%m-%d").date()
+            end = datetime.strptime(end_date, "%Y-%m-%d").date()
+        except ValueError:
+            error = "Please provide valid dates."
+        else:
+            if end < start:
+                error = "End date must be on or after the start date."
+            elif _overtime_overlaps(start_date, end_date, exclude_id=entry_id):
+                error = "This overlaps an existing overtime entry."
+            else:
+                db.execute(
+                    "UPDATE overtime_entries SET start_date = ?, end_date = ?, note = ?, account = ?, status = ? "
+                    "WHERE id = ?",
+                    (start_date, end_date, note, account, status, entry_id),
+                )
+                db.commit()
+                return redirect(url_for("overtime"))
+    return render_template(
+        "overtime_add_entry.html",
+        error=error,
+        entry=entry,
         today=date.today().isoformat(),
         statuses=ENTRY_STATUSES,
         accounts=OVERTIME_ACCOUNTS,
@@ -471,18 +632,38 @@ def add_overtime_entry():
 @login_required
 def update_overtime_entry_status(entry_id):
     status = request.form.get("status", "")
+    year = request.args.get("year")
     if status in ENTRY_STATUSES:
         get_db().execute("UPDATE overtime_entries SET status = ? WHERE id = ?", (status, entry_id))
         get_db().commit()
-    return redirect(url_for("overtime"))
+    return redirect(url_for("overtime", year=year) if year else url_for("overtime"))
 
 
 @app.route("/overtime/entries/<int:entry_id>/delete", methods=["POST"])
 @login_required
 def delete_overtime_entry(entry_id):
+    year = request.args.get("year")
     get_db().execute("DELETE FROM overtime_entries WHERE id = ?", (entry_id,))
     get_db().commit()
-    return redirect(url_for("overtime"))
+    return redirect(url_for("overtime", year=year) if year else url_for("overtime"))
+
+
+@app.route("/overtime/entries/export.csv")
+@login_required
+def export_overtime_csv():
+    entries = get_db().execute(
+        "SELECT start_date, end_date, note, account, status FROM overtime_entries ORDER BY start_date"
+    ).fetchall()
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["start_date", "end_date", "note", "account", "status"])
+    for e in entries:
+        writer.writerow([e["start_date"], e["end_date"], e["note"] or "", e["account"], e["status"]])
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=overtime_entries.csv"},
+    )
 
 
 @app.route("/allowance", methods=["GET", "POST"])
@@ -543,6 +724,24 @@ def carryover():
             (year, days),
         )
         db.commit()
+    return redirect(url_for("allowance"))
+
+
+@app.route("/account/password", methods=["POST"])
+@login_required
+def change_password():
+    current = request.form.get("current_password", "")
+    new = request.form.get("new_password", "")
+    confirm = request.form.get("confirm_password", "")
+    if not check_password_hash(get_setting("admin_password_hash", ""), current):
+        flash("Current password is incorrect.", "error")
+    elif not new:
+        flash("New password is required.", "error")
+    elif new != confirm:
+        flash("New passwords do not match.", "error")
+    else:
+        set_setting("admin_password_hash", generate_password_hash(new))
+        flash("Password changed.", "success")
     return redirect(url_for("allowance"))
 
 

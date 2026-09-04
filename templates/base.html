@@ -19,6 +19,9 @@
       </nav>
       {% endif %}
     </header>
+    {% for category, message in get_flashed_messages(with_categories=true) %}
+    <div class="{{ 'error' if category == 'error' else 'success' }}">{{ message }}</div>
+    {% endfor %}
     {% block content %}{% endblock %}
   </div>
 </body>
