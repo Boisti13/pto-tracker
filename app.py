@@ -544,6 +544,11 @@ def overtime():
             planned[e["account"]] += e["hours"]
     remaining = {acc: balances[acc] - planned[acc] for acc in OVERTIME_ACCOUNTS}
 
+    daily = get_daily_hours()
+
+    def _days(hours):
+        return round(hours / daily, 1) if daily else None
+
     return render_template(
         "overtime.html",
         error=error,
@@ -551,11 +556,13 @@ def overtime():
         years=_overtime_years_with_data(),
         year_filter=year_filter,
         weekly_hours=get_weekly_hours(),
-        daily_hours=get_daily_hours(),
+        daily_hours=daily,
         balances=balances,
         balances_hhmm={acc: hours_to_hhmm(v) for acc, v in balances.items()},
+        balances_days={acc: _days(v) for acc, v in balances.items()},
         remaining=remaining,
         remaining_hhmm={acc: hours_to_hhmm(v) for acc, v in remaining.items()},
+        remaining_days={acc: _days(v) for acc, v in remaining.items()},
         statuses=ENTRY_STATUSES,
         accounts=OVERTIME_ACCOUNTS,
     )

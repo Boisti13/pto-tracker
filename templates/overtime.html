@@ -28,18 +28,22 @@
     <div class="stat">
       <div class="value">{{ balances_hhmm.main }}</div>
       <div class="label">Overtime balance</div>
+      {% if balances_days.main is not none %}<div class="days-note">&asymp; {{ balances_days.main }} days off</div>{% endif %}
     </div>
     <div class="stat remaining {{ 'negative' if remaining.main < 0 else '' }}">
       <div class="value">{{ remaining_hhmm.main }}</div>
       <div class="label">After planned</div>
+      {% if remaining_days.main is not none %}<div class="days-note">&asymp; {{ remaining_days.main }} days off</div>{% endif %}
     </div>
     <div class="stat">
       <div class="value">{{ balances_hhmm.ama }}</div>
       <div class="label">AMA balance</div>
+      {% if balances_days.ama is not none %}<div class="days-note">&asymp; {{ balances_days.ama }} days off</div>{% endif %}
     </div>
     <div class="stat remaining {{ 'negative' if remaining.ama < 0 else '' }}">
       <div class="value">{{ remaining_hhmm.ama }}</div>
       <div class="label">After planned</div>
+      {% if remaining_days.ama is not none %}<div class="days-note">&asymp; {{ remaining_days.ama }} days off</div>{% endif %}
     </div>
   </div>
   <p class="muted" style="text-align:center; margin:16px 0 0;">

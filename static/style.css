@@ -75,6 +75,7 @@ nav a:hover, header.topbar a:hover { text-decoration: underline; }
 .stat .label { font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
 .stat.remaining .value { color: var(--success); }
 .stat.remaining.negative .value { color: var(--danger); }
+.stat .days-note { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
 
 .card-subhead {
   margin: 24px 0 8px;
