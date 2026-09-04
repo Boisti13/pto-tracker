@@ -186,6 +186,31 @@ def get_overtime_balance(account):
     return float(get_setting(f"overtime_balance_{account}", 0))
 
 
+def hours_to_hhmm(hours):
+    sign = "-" if hours < 0 else ""
+    total_minutes = round(abs(hours) * 60)
+    h, m = divmod(total_minutes, 60)
+    return f"{sign}{h}:{m:02d}"
+
+
+def hhmm_to_hours(text):
+    text = text.strip().replace(",", ".")
+    if not text:
+        raise ValueError("empty")
+    sign = 1
+    if text[0] in "+-":
+        sign = -1 if text[0] == "-" else 1
+        text = text[1:]
+    if ":" in text:
+        h_str, m_str = text.split(":", 1)
+        h = int(h_str)
+        m = int(m_str)
+        if not (0 <= m < 60):
+            raise ValueError("minutes must be between 0 and 59")
+        return sign * (h + m / 60)
+    return sign * float(text)
+
+
 def _overtime_entries_with_hours():
     state = get_holiday_state()
     daily = get_daily_hours()
@@ -199,6 +224,7 @@ def _overtime_entries_with_hours():
             {
                 **dict(e),
                 "hours": hours,
+                "hours_hhmm": hours_to_hhmm(hours),
                 "start_display": start.strftime(DISPLAY_DATE_FORMAT),
                 "end_display": end.strftime(DISPLAY_DATE_FORMAT),
             }
@@ -360,9 +386,23 @@ def delete_entry(entry_id):
     return redirect(url_for("dashboard", year=year))
 
 
-@app.route("/overtime")
+@app.route("/overtime", methods=["GET", "POST"])
 @login_required
 def overtime():
+    error = None
+    if request.method == "POST":
+        try:
+            weekly_hours = float(request.form.get("weekly_hours", "").replace(",", "."))
+            balance_main = hhmm_to_hours(request.form.get("balance_main", ""))
+            balance_ama = hhmm_to_hours(request.form.get("balance_ama", ""))
+        except (TypeError, ValueError):
+            error = "Please provide a valid weekly hours number and balances as H:MM (e.g. 27:12)."
+        else:
+            set_setting("weekly_hours", str(weekly_hours))
+            set_setting("overtime_balance_main", str(balance_main))
+            set_setting("overtime_balance_ama", str(balance_ama))
+            return redirect(url_for("overtime"))
+
     entries = _overtime_entries_with_hours()
     balances = {acc: get_overtime_balance(acc) for acc in OVERTIME_ACCOUNTS}
     planned = {acc: 0.0 for acc in OVERTIME_ACCOUNTS}
@@ -373,30 +413,17 @@ def overtime():
 
     return render_template(
         "overtime.html",
+        error=error,
         entries=entries,
         weekly_hours=get_weekly_hours(),
         daily_hours=get_daily_hours(),
         balances=balances,
+        balances_hhmm={acc: hours_to_hhmm(v) for acc, v in balances.items()},
         remaining=remaining,
+        remaining_hhmm={acc: hours_to_hhmm(v) for acc, v in remaining.items()},
         statuses=ENTRY_STATUSES,
         accounts=OVERTIME_ACCOUNTS,
     )
-
-
-@app.route("/overtime/settings", methods=["POST"])
-@login_required
-def overtime_settings():
-    try:
-        weekly_hours = float(request.form.get("weekly_hours"))
-        balance_main = float(request.form.get("balance_main"))
-        balance_ama = float(request.form.get("balance_ama"))
-    except (TypeError, ValueError):
-        pass
-    else:
-        set_setting("weekly_hours", str(weekly_hours))
-        set_setting("overtime_balance_main", str(balance_main))
-        set_setting("overtime_balance_ama", str(balance_ama))
-    return redirect(url_for("overtime"))
 
 
 @app.route("/overtime/entries/add", methods=["GET", "POST"])

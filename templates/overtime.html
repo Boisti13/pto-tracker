@@ -4,16 +4,19 @@
 
 <div class="card">
   <h2 style="margin-top:0;">Overtime settings</h2>
-  <form method="post" action="{{ url_for('overtime_settings') }}">
+  {% if error %}<div class="error">{{ error }}</div>{% endif %}
+  <form method="post">
     <label for="weekly_hours">Weekly paid hours</label>
     <input id="weekly_hours" name="weekly_hours" type="number" step="0.1" value="{{ weekly_hours }}" required>
     <p class="muted" style="margin-top:4px;">Based on a 5-day work week &rarr; {{ daily_hours | round(2) }}h/day.</p>
 
-    <label for="balance_main">Current overtime balance (h)</label>
-    <input id="balance_main" name="balance_main" type="number" step="0.1" value="{{ balances.main }}" required>
+    <label for="balance_main">Current overtime balance (H:MM)</label>
+    <input id="balance_main" name="balance_main" type="text" inputmode="numeric" placeholder="e.g. 27:12"
+           pattern="-?\d+:\d{2}" value="{{ balances_hhmm.main }}" required>
 
-    <label for="balance_ama">Current AMA balance (h)</label>
-    <input id="balance_ama" name="balance_ama" type="number" step="0.1" value="{{ balances.ama }}" required>
+    <label for="balance_ama">Current AMA balance (H:MM)</label>
+    <input id="balance_ama" name="balance_ama" type="text" inputmode="numeric" placeholder="e.g. 27:12"
+           pattern="-?\d+:\d{2}" value="{{ balances_hhmm.ama }}" required>
 
     <p style="margin-top:16px;"><button class="btn" type="submit">Save</button></p>
   </form>
@@ -22,19 +25,19 @@
 <div class="card">
   <div class="stats">
     <div class="stat">
-      <div class="value">{{ balances.main | round(1) }}</div>
+      <div class="value">{{ balances_hhmm.main }}</div>
       <div class="label">Overtime balance</div>
     </div>
     <div class="stat remaining {{ 'negative' if remaining.main < 0 else '' }}">
-      <div class="value">{{ remaining.main | round(1) }}</div>
+      <div class="value">{{ remaining_hhmm.main }}</div>
       <div class="label">After planned</div>
     </div>
     <div class="stat">
-      <div class="value">{{ balances.ama | round(1) }}</div>
+      <div class="value">{{ balances_hhmm.ama }}</div>
       <div class="label">AMA balance</div>
     </div>
     <div class="stat remaining {{ 'negative' if remaining.ama < 0 else '' }}">
-      <div class="value">{{ remaining.ama | round(1) }}</div>
+      <div class="value">{{ remaining_hhmm.ama }}</div>
       <div class="label">After planned</div>
     </div>
   </div>
@@ -57,7 +60,7 @@
       <tr>
         <td data-label="Start">{{ e.start_display }}</td>
         <td data-label="End">{{ e.end_display }}</td>
-        <td data-label="Hours">{{ e.hours }}</td>
+        <td data-label="Hours">{{ e.hours_hhmm }}</td>
         <td data-label="Note">{{ e.note or "" }}</td>
         <td data-label="Account">{{ accounts[e.account] }}</td>
         <td data-label="Status">
