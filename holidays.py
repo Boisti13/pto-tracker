@@ -104,11 +104,16 @@ def state_holidays(year: int, state: str = DEFAULT_STATE) -> dict[date, str]:
     return result
 
 
-def holidays_in_range(start: date, end: date, state: str = DEFAULT_STATE) -> dict[date, str]:
-    """Holidays covering every year touched by [start, end]."""
+def holidays_in_range(
+    start: date, end: date, state: str = DEFAULT_STATE, extra: dict[date, str] | None = None
+) -> dict[date, str]:
+    """Holidays covering every year touched by [start, end], plus any extra
+    (non-official) dates the caller wants treated as holidays too."""
     result: dict[date, str] = {}
     for y in range(start.year, end.year + 1):
         result.update(state_holidays(y, state))
+    if extra:
+        result.update(extra)
     return result
 
 
@@ -116,9 +121,9 @@ def is_workday(d: date, holidays: dict[date, str]) -> bool:
     return d.weekday() < 5 and d not in holidays
 
 
-def count_pto_days(start: date, end: date, state: str = DEFAULT_STATE) -> int:
+def count_pto_days(start: date, end: date, state: str = DEFAULT_STATE, extra: dict[date, str] | None = None) -> int:
     """Count working days (Mon-Fri, excluding public holidays) in [start, end]."""
-    holidays = holidays_in_range(start, end, state)
+    holidays = holidays_in_range(start, end, state, extra)
     n = 0
     d = start
     while d <= end:

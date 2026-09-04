@@ -128,6 +128,26 @@ def get_holiday_state():
     return state if state in GERMAN_STATES else DEFAULT_STATE
 
 
+EXTRA_HOLIDAYS = [("Heiligabend", 12, 24), ("Silvester", 12, 31)]
+
+
+def get_extra_holidays_enabled():
+    return get_setting("extra_holidays_dec", "0") == "1"
+
+
+def extra_holidays_for_years(start_year, end_year):
+    """24 Dec and 31 Dec, if the user has opted in — not official public
+    holidays in any German state, but commonly treated as non-working days.
+    """
+    if not get_extra_holidays_enabled():
+        return {}
+    result = {}
+    for y in range(start_year, end_year + 1):
+        for name, month, day in EXTRA_HOLIDAYS:
+            result[date(y, month, day)] = name
+    return result
+
+
 def get_allowance(year):
     row = get_db().execute("SELECT days FROM allowances WHERE year = ?", (year,)).fetchone()
     if row:
@@ -137,6 +157,7 @@ def get_allowance(year):
 
 def _entries_with_days(year):
     state = get_holiday_state()
+    extra = extra_holidays_for_years(year, year)
     entries = get_db().execute(
         "SELECT * FROM pto_entries "
         "WHERE strftime('%Y', start_date) = ? OR strftime('%Y', end_date) = ? "
@@ -149,7 +170,7 @@ def _entries_with_days(year):
         end = datetime.strptime(e["end_date"], "%Y-%m-%d").date()
         clipped_start = max(start, date(year, 1, 1))
         clipped_end = min(end, date(year, 12, 31))
-        days = count_pto_days(clipped_start, clipped_end, state)
+        days = count_pto_days(clipped_start, clipped_end, state, extra)
         result.append(
             {
                 **dict(e),
@@ -271,7 +292,8 @@ def _overtime_entries_with_hours():
     for e in entries:
         start = datetime.strptime(e["start_date"], "%Y-%m-%d").date()
         end = datetime.strptime(e["end_date"], "%Y-%m-%d").date()
-        hours = round(count_pto_days(start, end, state) * daily, 2)
+        extra = extra_holidays_for_years(start.year, end.year)
+        hours = round(count_pto_days(start, end, state, extra) * daily, 2)
         result.append(
             {
                 **dict(e),
@@ -359,9 +381,8 @@ def dashboard():
     allowance = get_allowance(year)
     carryover = get_carryover(year)
     state = get_holiday_state()
-    upcoming_holidays = sorted(
-        (d, name) for d, name in state_holidays(date.today().year, state).items() if d >= date.today()
-    )[:5]
+    all_holidays = {**state_holidays(date.today().year, state), **extra_holidays_for_years(date.today().year, date.today().year)}
+    upcoming_holidays = sorted((d, name) for d, name in all_holidays.items() if d >= date.today())[:5]
 
     overtime_balances = {acc: get_overtime_balance(acc) for acc in OVERTIME_ACCOUNTS}
     daily = get_daily_hours()
@@ -742,6 +763,7 @@ def allowance():
         current_year=date.today().year,
         state_options=sorted(GERMAN_STATES.items(), key=lambda kv: kv[1]),
         holiday_state=get_holiday_state(),
+        extra_holidays_enabled=get_extra_holidays_enabled(),
     )
 
 
@@ -751,6 +773,7 @@ def set_holiday_state():
     state = request.form.get("state", "")
     if state in GERMAN_STATES:
         set_setting("holiday_state", state)
+    set_setting("extra_holidays_dec", "1" if request.form.get("extra_holidays") == "1" else "0")
     return redirect(url_for("allowance"))
 
 

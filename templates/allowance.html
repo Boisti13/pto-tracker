@@ -12,6 +12,11 @@
       <option value="{{ code }}" {{ "selected" if code == holiday_state else "" }}>{{ name }}</option>
       {% endfor %}
     </select>
+    <label class="checkbox-row">
+      <input type="checkbox" name="extra_holidays" value="1" onchange="this.form.submit()"
+             {{ "checked" if extra_holidays_enabled else "" }}>
+      <span>Also treat 24 Dec (Heiligabend) and 31 Dec (Silvester) as non-working days</span>
+    </label>
   </form>
 </div>
 
