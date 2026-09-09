@@ -43,6 +43,14 @@ system, no database server, no build step — just Python and SQLite.
   vacation spanning multiple months — or across New Year's — is always
   visible in full, no manual range-picking required; an arrow on the edge
   day marks the rare case where it still runs past that.
+- **Optional calendar feed (.ics).** Turn it on in Settings to get a
+  subscribable URL for your PTO and overtime time off, so it shows up
+  in your phone or desktop calendar app. Gated by a random token in the
+  URL rather than a login (calendar apps can't do interactive auth), with
+  a "Regenerate link" button if it ever needs to be invalidated. The app
+  itself stays LAN-only as before — reaching this feed from outside your
+  network is a networking choice you make separately (e.g. a tunnel scoped
+  to just this one path), not something the app does for you.
 - **CSV export** for both PTO and overtime entries.
 - Mobile-friendly — usable on a phone down to a 320px-wide screen.
 - No JavaScript framework, no external CDN dependency — works entirely on

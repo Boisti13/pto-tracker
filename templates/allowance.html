@@ -15,6 +15,28 @@
 </div>
 
 <div class="card">
+  <h2>Calendar feed (.ics)</h2>
+  <p class="muted">Get a subscribable calendar URL for your PTO and overtime time off, to add to your phone or desktop calendar app. Anyone with this URL can see your time off dates, so keep it private and regenerate it if it ever leaks.</p>
+  <form method="post" action="{{ url_for('set_ics_feed') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="checkbox-row">
+      <input type="checkbox" name="ics_feed" value="1" onchange="this.form.submit()"
+             {{ "checked" if ics_enabled else "" }}>
+      <span>Enable calendar feed</span>
+    </label>
+  </form>
+  {% if ics_enabled %}
+  <label for="ics_url" style="margin-top:16px;">Feed URL</label>
+  <input id="ics_url" type="text" readonly value="{{ ics_url }}" onclick="this.select()">
+  <form method="post" action="{{ url_for('regenerate_ics_token') }}" style="margin-top:12px;"
+        onsubmit="return confirm('This invalidates the current URL — any calendar app already subscribed will stop updating until you give it the new one. Continue?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn secondary" type="submit">Regenerate link</button>
+  </form>
+  {% endif %}
+</div>
+
+<div class="card">
   <h2>Public holidays</h2>
   <p class="muted">Which German state's public holidays to exclude when counting days used.</p>
   <form method="post" action="{{ url_for('set_holiday_state') }}">

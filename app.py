@@ -148,6 +148,18 @@ def calendar_view_enabled():
     return get_setting("calendar_view_enabled", "0") == "1"
 
 
+def ics_feed_enabled():
+    return get_setting("ics_feed_enabled", "0") == "1"
+
+
+def get_ics_token():
+    token = get_setting("ics_feed_token")
+    if not token:
+        token = secrets.token_hex(32)
+        set_setting("ics_feed_token", token)
+    return token
+
+
 @app.context_processor
 def inject_calendar_nav_flag():
     if not session.get("logged_in"):
@@ -1119,6 +1131,92 @@ def calendar_view():
     )
 
 
+def _ics_escape(text):
+    return (text or "").replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace("\n", "\\n")
+
+
+def _ics_entries(table, kind):
+    """One event per logical entry — split-at-year-boundary rows sharing a
+    group_id are merged back into a single event spanning their true range,
+    so a subscriber's calendar doesn't show the trip stopping and restarting
+    on 31 Dec / 1 Jan."""
+    rows = get_db().execute(f"SELECT * FROM {table} ORDER BY start_date").fetchall()
+    groups = {}
+    for r in rows:
+        groups.setdefault(r["group_id"] or r["id"], []).append(r)
+    events = []
+    for group_rows in groups.values():
+        first, last = group_rows[0], group_rows[-1]
+        start = datetime.strptime(first["start_date"], "%Y-%m-%d").date()
+        end = datetime.strptime(last["end_date"], "%Y-%m-%d").date()
+        half = first["half_day"] == "start" or last["half_day"] == "end"
+        title = first["note"] or ("PTO" if kind == "pto" else "Time off")
+        title = f"{title} ({first['status']})"
+        if kind == "overtime":
+            title += f" — {OVERTIME_ACCOUNTS.get(first['account'], first['account'])}"
+        if half:
+            title += " (half day)"
+        events.append(
+            {
+                "uid": f"{kind}-{first['group_id'] or first['id']}@pto-tracker",
+                "start": start,
+                "end": end,
+                "summary": title,
+            }
+        )
+    return events
+
+
+def _build_ics_feed():
+    events = _ics_entries("pto_entries", "pto") + _ics_entries("overtime_entries", "overtime")
+    now = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//PTO Tracker//EN",
+        "CALSCALE:GREGORIAN",
+        "X-WR-CALNAME:PTO Tracker",
+    ]
+    for e in events:
+        lines += [
+            "BEGIN:VEVENT",
+            f"UID:{e['uid']}",
+            f"DTSTAMP:{now}",
+            f"DTSTART;VALUE=DATE:{e['start'].strftime('%Y%m%d')}",
+            f"DTEND;VALUE=DATE:{(e['end'] + timedelta(days=1)).strftime('%Y%m%d')}",
+            f"SUMMARY:{_ics_escape(e['summary'])}",
+            "END:VEVENT",
+        ]
+    lines.append("END:VCALENDAR")
+    return "\r\n".join(lines) + "\r\n"
+
+
+@app.route("/feed/<token>.ics")
+def ics_feed(token):
+    # Deliberately not @login_required — calendar apps fetch this in the
+    # background with no way to do an interactive session login. The random
+    # token in the URL is the only gate, so it's checked in constant time.
+    if not ics_feed_enabled() or not secrets.compare_digest(token, get_ics_token()):
+        abort(404)
+    return Response(_build_ics_feed(), content_type="text/calendar; charset=utf-8")
+
+
+@app.route("/settings/ics-feed", methods=["POST"])
+@login_required
+def set_ics_feed():
+    set_setting("ics_feed_enabled", "1" if request.form.get("ics_feed") == "1" else "0")
+    if ics_feed_enabled():
+        get_ics_token()
+    return redirect(url_for("allowance"))
+
+
+@app.route("/settings/ics-feed/regenerate", methods=["POST"])
+@login_required
+def regenerate_ics_token():
+    set_setting("ics_feed_token", secrets.token_hex(32))
+    return redirect(url_for("allowance"))
+
+
 @app.route("/allowance", methods=["GET", "POST"])
 @login_required
 def allowance():
@@ -1151,6 +1249,8 @@ def allowance():
         holiday_state=get_holiday_state(),
         extra_dec24_enabled=get_extra_holiday_enabled("dec24"),
         extra_dec31_enabled=get_extra_holiday_enabled("dec31"),
+        ics_enabled=ics_feed_enabled(),
+        ics_url=url_for("ics_feed", token=get_ics_token(), _external=True) if ics_feed_enabled() else None,
     )
 
 
