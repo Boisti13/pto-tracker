@@ -215,6 +215,7 @@ input[type="checkbox"] { width: auto; padding: 0; }
 }
 .status-select.status-taken { background: #dcfce7; color: #166534; }
 .status-select.status-planned { background: #dbeafe; color: #1e40af; }
+.status-select.status-approved { background: #fef3c7; color: #92400e; }
 
 .badge-continue {
   display: block;

@@ -16,7 +16,7 @@ from holidays import DEFAULT_STATE, GERMAN_STATES, count_pto_days, holidays_in_r
 DB_PATH = os.environ.get("PTO_DB_PATH", os.path.join(os.path.dirname(__file__), "data", "pto.db"))
 DEFAULT_ALLOWANCE = 30
 DEFAULT_WEEKLY_HOURS = 39.0
-ENTRY_STATUSES = ("planned", "taken")
+ENTRY_STATUSES = ("planned", "approved", "taken")
 HALF_DAY_OPTIONS = ("start", "end")
 OVERTIME_ACCOUNTS = {"main": "Overtime", "ama": "AMA"}
 DISPLAY_DATE_FORMAT = "%d-%m-%Y"
@@ -550,7 +550,9 @@ def dashboard():
     year = int(request.args.get("year", date.today().year))
     entry_rows = _entries_with_days(year)
     used = sum(e["days"] for e in entry_rows)
-    taken = sum(e["days"] for e in entry_rows if e["status"] == "taken")
+    # "approved" counts the same as "taken" for this breakdown — both are
+    # committed, only "planned" is still tentative.
+    taken = sum(e["days"] for e in entry_rows if e["status"] in ("taken", "approved"))
     planned = used - taken
 
     allowance = get_allowance(year)
@@ -779,7 +781,7 @@ def overtime():
     balances = {acc: get_overtime_balance(acc) for acc in OVERTIME_ACCOUNTS}
     planned = {acc: 0.0 for acc in OVERTIME_ACCOUNTS}
     for e in all_entries:
-        if e["account"] in planned and e["status"] == "planned":
+        if e["account"] in planned and e["status"] != "taken":
             planned[e["account"]] += e["hours"]
     remaining = {acc: balances[acc] - planned[acc] for acc in OVERTIME_ACCOUNTS}
 

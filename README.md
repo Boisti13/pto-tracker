@@ -14,9 +14,10 @@ system, no database server, no build step — just Python and SQLite.
   in Settings (defaults to Rheinland-Pfalz) — weekends and that state's
   holidays are excluded automatically when counting days used, for any year,
   no yearly maintenance.
-- **Planned vs. taken.** Every entry has a status. Both count against your
-  balance, but the dashboard breaks out how many of the used days were
-  actually taken versus still just planned — change the status inline as
+- **Planned, approved, or taken.** Every entry has a status. All three count
+  against your balance, and the dashboard breaks out how many of the used
+  days are taken-or-approved versus still just planned (approved counts the
+  same as taken there — both are committed) — change the status inline as
   plans firm up. Entries can be edited or deleted after the fact, and
   overlapping date ranges are rejected.
 - **Half-day entries.** Mark the first or last day of an entry as a half day

@@ -32,8 +32,8 @@
     </select>
     <p class="muted" style="margin-top:10px;">
       Weekends and {{ holiday_state_name }} public holidays are excluded automatically. Hours are computed from
-      your weekly paid hours ({{ daily_hours | round(2) }}h/day). Only <strong>planned</strong> entries count
-      against the balance shown on the Overtime page.
+      your weekly paid hours ({{ daily_hours | round(2) }}h/day). Entries not yet marked <strong>taken</strong>
+      count against the balance shown on the Overtime page.
     </p>
     <p class="muted" style="margin-top:6px;">An entry spanning New Year's is automatically split into one part per year (e.g. 21 Dec &ndash; 10 Jan becomes two linked entries).{% if is_split %} This entry is already split &mdash; editing it here edits the whole date range and re-splits it on save.{% endif %}</p>
     <p style="margin-top:16px;">
