@@ -430,7 +430,9 @@ def _overtime_years_with_data():
             years.add(int(r["ys"]))
         if r["ye"]:
             years.add(int(r["ye"]))
-    return sorted(years, reverse=True)
+    current = date.today().year
+    rest = sorted(y for y in years if y != current)
+    return ([current] if current in years else []) + rest
 
 
 def login_required(view):
@@ -540,7 +542,9 @@ def _years_with_data():
         if r["ye"]:
             years.add(int(r["ye"]))
     years.add(date.today().year)
-    return sorted(years, reverse=True)
+    current = date.today().year
+    rest = sorted(y for y in years if y != current)
+    return [current] + rest
 
 
 @app.route("/entries/add", methods=["GET", "POST"])
