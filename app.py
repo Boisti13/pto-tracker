@@ -1022,6 +1022,10 @@ def _calendar_month(year, month):
                     "note": r["note"],
                     "half": half,
                     "account": r["account"] if kind == "overtime" else None,
+                    # flags whether the entry actually runs past this rendered month's
+                    # edge, so a one-month-at-a-time view doesn't hide the rest of it
+                    "continued_before": d == month_start and rstart < month_start,
+                    "continues_after": d == month_end and rend > month_end,
                 }
                 d += timedelta(days=1)
 
@@ -1046,6 +1050,9 @@ def _calendar_month(year, month):
     return weeks
 
 
+CALENDAR_SPANS = (1, 2, 3, 6)
+
+
 @app.route("/calendar")
 @login_required
 def calendar_view():
@@ -1056,14 +1063,25 @@ def calendar_view():
     month = int(request.args.get("month", today.month))
     if not 1 <= month <= 12:
         year, month = _shift_month(year, 1, month - 1)
-    prev_year, prev_month = _shift_month(year, month, -1)
-    next_year, next_month = _shift_month(year, month, 1)
+    try:
+        span = int(request.args.get("span", 1))
+    except ValueError:
+        span = 1
+    if span not in CALENDAR_SPANS:
+        span = 1
+    prev_year, prev_month = _shift_month(year, month, -span)
+    next_year, next_month = _shift_month(year, month, span)
+    months = []
+    for i in range(span):
+        y, m = _shift_month(year, month, i)
+        months.append({"year": y, "month": m, "label": f"{MONTH_NAMES[m]} {y}", "weeks": _calendar_month(y, m)})
     return render_template(
         "calendar.html",
         year=year,
         month=month,
-        month_label=MONTH_NAMES[month],
-        weeks=_calendar_month(year, month),
+        span=span,
+        spans=CALENDAR_SPANS,
+        months=months,
         prev_year=prev_year,
         prev_month=prev_month,
         next_year=next_year,

@@ -3,31 +3,44 @@
 {% block content %}
 
 <div class="year-switch calendar-nav">
-  <a href="{{ url_for('calendar_view', year=prev_year, month=prev_month) }}">&laquo;</a>
-  <span class="cal-month-label">{{ month_label }} {{ year }}</span>
-  <a href="{{ url_for('calendar_view', year=next_year, month=next_month) }}">&raquo;</a>
+  <a href="{{ url_for('calendar_view', year=prev_year, month=prev_month, span=span) }}">&laquo;</a>
+  <span class="cal-month-label">{{ months[0].label }}{% if months | length > 1 %} &ndash; {{ months[-1].label }}{% endif %}</span>
+  <a href="{{ url_for('calendar_view', year=next_year, month=next_month, span=span) }}">&raquo;</a>
 </div>
 
+<form method="get" action="{{ url_for('calendar_view') }}" class="calendar-span-row">
+  <input type="hidden" name="year" value="{{ year }}">
+  <input type="hidden" name="month" value="{{ month }}">
+  <label for="span">Show</label>
+  <select id="span" name="span" onchange="this.form.submit()">
+    {% for s in spans %}
+    <option value="{{ s }}" {{ "selected" if s == span else "" }}>{{ s }} month{{ "s" if s > 1 else "" }} at once</option>
+    {% endfor %}
+  </select>
+</form>
+
+{% for m in months %}
 <div class="card">
+  {% if months | length > 1 %}<h3 class="cal-block-label">{{ m.label }}</h3>{% endif %}
   <div class="table-scroll">
     <table class="calendar-table">
       <thead>
         <tr><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th><th>Sun</th></tr>
       </thead>
       <tbody>
-        {% for week in weeks %}
+        {% for week in m.weeks %}
         <tr>
           {% for day in week %}
           {% if day is none %}
           <td class="cal-day empty"></td>
           {% else %}
           <td class="cal-day {{ 'weekend' if day.is_weekend else '' }} {{ 'today' if day.is_today else '' }}"
-              title="{{ day.holiday or '' }}{% if day.entry %}{{ ' — ' if day.holiday else '' }}{{ day.entry.note or (day.entry.kind | capitalize) }}{{ ' (half day)' if day.entry.half else '' }}{% endif %}">
+              title="{{ day.holiday or '' }}{% if day.entry %}{{ ' — ' if day.holiday else '' }}{{ day.entry.note or (day.entry.kind | capitalize) }}{{ ' (half day)' if day.entry.half else '' }}{{ ' (continues beyond this month)' if day.entry.continues_after else '' }}{{ ' (continued from before)' if day.entry.continued_before else '' }}{% endif %}">
             <span class="cal-daynum">{{ day.day }}</span>
             {% if day.holiday %}<span class="cal-tag tag-holiday">{{ day.holiday }}</span>{% endif %}
             {% if day.entry %}
             <span class="cal-tag {{ 'tag-overtime' if day.entry.kind == 'overtime' else 'tag-' + day.entry.status }}">
-              {{ day.entry.note or (day.entry.kind | capitalize) }}{% if day.entry.half %} &frac12;{% endif %}
+              {% if day.entry.continued_before %}&larr; {% endif %}{{ day.entry.note or (day.entry.kind | capitalize) }}{% if day.entry.half %} &frac12;{% endif %}{% if day.entry.continues_after %} &rarr;{% endif %}
             </span>
             {% endif %}
           </td>
@@ -38,12 +51,17 @@
       </tbody>
     </table>
   </div>
+</div>
+{% endfor %}
+
+<div class="card">
   <p class="muted calendar-legend">
     <span class="cal-tag tag-planned">planned</span>
     <span class="cal-tag tag-approved">approved</span>
     <span class="cal-tag tag-taken">taken</span>
     <span class="cal-tag tag-overtime">overtime</span>
     <span class="cal-tag tag-holiday">{{ holiday_state_name }} holiday</span>
+    <span class="muted" style="font-size:0.72rem;">&larr;/&rarr; = continues beyond this month</span>
   </p>
 </div>
 

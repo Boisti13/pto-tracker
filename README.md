@@ -37,9 +37,11 @@ system, no database server, no build step — just Python and SQLite.
   entries not yet marked "taken" count against the balance shown, so you can
   freely re-sync the balance from your employer's system without
   double-counting anything already reflected in it.
-- **Optional calendar view.** Turn it on in Settings to get a month-by-month
-  grid alongside the list view, with PTO, overtime, and public holidays all
-  marked on it.
+- **Optional calendar view.** Turn it on in Settings to get a calendar grid
+  alongside the list view, with PTO, overtime, and public holidays all marked
+  on it. Shows 1, 2, 3, or 6 months at once (your choice) so a vacation
+  spanning multiple months — or across New Year's — is visible in one place;
+  an arrow on the edge day marks when it continues beyond what's shown.
 - **CSV export** for both PTO and overtime entries.
 - Mobile-friendly — usable on a phone down to a 320px-wide screen.
 - No JavaScript framework, no external CDN dependency — works entirely on
