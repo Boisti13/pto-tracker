@@ -4,7 +4,8 @@ import os
 import secrets
 import sqlite3
 import tempfile
-from datetime import date, datetime
+import uuid
+from datetime import date, datetime, timezone
 from functools import wraps
 
 from flask import Flask, Response, abort, flash, g, redirect, render_template, request, send_file, session, url_for
@@ -95,6 +96,13 @@ def init_db():
     if "status" not in columns:
         db.execute("ALTER TABLE pto_entries ADD COLUMN status TEXT NOT NULL DEFAULT 'planned'")
         db.commit()
+    if "group_id" not in columns:
+        db.execute("ALTER TABLE pto_entries ADD COLUMN group_id TEXT")
+        db.commit()
+    overtime_columns = {row[1] for row in db.execute("PRAGMA table_info(overtime_entries)")}
+    if "group_id" not in overtime_columns:
+        db.execute("ALTER TABLE overtime_entries ADD COLUMN group_id TEXT")
+        db.commit()
     if db.execute("SELECT 1 FROM settings WHERE key = 'secret_key'").fetchone() is None:
         db.execute(
             "INSERT INTO settings (key, value) VALUES ('secret_key', ?)",
@@ -164,6 +172,7 @@ def get_allowance(year):
 def _entries_with_days(year):
     state = get_holiday_state()
     extra = extra_holidays_for_years(year, year)
+    group_bounds = _pto_group_bounds()
     entries = get_db().execute(
         "SELECT * FROM pto_entries "
         "WHERE strftime('%Y', start_date) = ? OR strftime('%Y', end_date) = ? "
@@ -177,12 +186,23 @@ def _entries_with_days(year):
         clipped_start = max(start, date(year, 1, 1))
         clipped_end = min(end, date(year, 12, 31))
         days = count_pto_days(clipped_start, clipped_end, state, extra)
+        continues_into = None
+        continued_from = None
+        bounds = group_bounds.get(e["group_id"])
+        if bounds:
+            gmin, gmax = bounds
+            if e["end_date"] != gmax:
+                continues_into = end.year + 1
+            if e["start_date"] != gmin:
+                continued_from = start.year - 1
         result.append(
             {
                 **dict(e),
                 "days": days,
                 "start_display": start.strftime(DISPLAY_DATE_FORMAT),
                 "end_display": end.strftime(DISPLAY_DATE_FORMAT),
+                "continues_into": continues_into,
+                "continued_from": continued_from,
             }
         )
     return result
@@ -192,34 +212,110 @@ def compute_used(year):
     return sum(e["days"] for e in _entries_with_days(year))
 
 
-def _pto_overlaps(start_date, end_date, exclude_id=None):
+def _pto_overlaps(start_date, end_date, exclude_ids=None):
     query = "SELECT 1 FROM pto_entries WHERE start_date <= ? AND end_date >= ?"
     params = [end_date, start_date]
-    if exclude_id is not None:
-        query += " AND id != ?"
-        params.append(exclude_id)
+    if exclude_ids:
+        query += f" AND id NOT IN ({','.join('?' * len(exclude_ids))})"
+        params.extend(exclude_ids)
     return get_db().execute(query, params).fetchone() is not None
 
 
-def _overtime_overlaps(start_date, end_date, exclude_id=None):
+def _overtime_overlaps(start_date, end_date, exclude_ids=None):
     query = "SELECT 1 FROM overtime_entries WHERE start_date <= ? AND end_date >= ?"
     params = [end_date, start_date]
-    if exclude_id is not None:
-        query += " AND id != ?"
-        params.append(exclude_id)
+    if exclude_ids:
+        query += f" AND id NOT IN ({','.join('?' * len(exclude_ids))})"
+        params.extend(exclude_ids)
     return get_db().execute(query, params).fetchone() is not None
 
 
-def _overlap_kind(start_date, end_date, exclude_pto_id=None, exclude_overtime_id=None):
+def _overlap_kind(start_date, end_date, exclude_pto_ids=None, exclude_overtime_ids=None):
     """Whether [start_date, end_date] overlaps an existing entry in either table.
     Returns "PTO", "overtime", or None. A day off is a day off regardless of
     which balance it draws from, so both tables are checked either way.
     """
-    if _pto_overlaps(start_date, end_date, exclude_id=exclude_pto_id):
+    if _pto_overlaps(start_date, end_date, exclude_ids=exclude_pto_ids):
         return "PTO"
-    if _overtime_overlaps(start_date, end_date, exclude_id=exclude_overtime_id):
+    if _overtime_overlaps(start_date, end_date, exclude_ids=exclude_overtime_ids):
         return "overtime"
     return None
+
+
+def _year_segments(start, end):
+    """Split [start, end] into one (start, end) tuple per calendar year it touches."""
+    segments = []
+    for y in range(start.year, end.year + 1):
+        segments.append((max(start, date(y, 1, 1)), min(end, date(y, 12, 31))))
+    return segments
+
+
+def _pto_group_bounds():
+    rows = get_db().execute(
+        "SELECT group_id, MIN(start_date) AS gmin, MAX(end_date) AS gmax FROM pto_entries "
+        "WHERE group_id IS NOT NULL GROUP BY group_id"
+    ).fetchall()
+    return {r["group_id"]: (r["gmin"], r["gmax"]) for r in rows}
+
+
+def _overtime_group_bounds():
+    rows = get_db().execute(
+        "SELECT group_id, MIN(start_date) AS gmin, MAX(end_date) AS gmax FROM overtime_entries "
+        "WHERE group_id IS NOT NULL GROUP BY group_id"
+    ).fetchall()
+    return {r["group_id"]: (r["gmin"], r["gmax"]) for r in rows}
+
+
+def _pto_entry_group(entry_id):
+    db = get_db()
+    row = db.execute("SELECT * FROM pto_entries WHERE id = ?", (entry_id,)).fetchone()
+    if row is None:
+        return None, []
+    if row["group_id"]:
+        group_rows = db.execute(
+            "SELECT * FROM pto_entries WHERE group_id = ? ORDER BY start_date", (row["group_id"],)
+        ).fetchall()
+        return row, group_rows
+    return row, [row]
+
+
+def _overtime_entry_group(entry_id):
+    db = get_db()
+    row = db.execute("SELECT * FROM overtime_entries WHERE id = ?", (entry_id,)).fetchone()
+    if row is None:
+        return None, []
+    if row["group_id"]:
+        group_rows = db.execute(
+            "SELECT * FROM overtime_entries WHERE group_id = ? ORDER BY start_date", (row["group_id"],)
+        ).fetchall()
+        return row, group_rows
+    return row, [row]
+
+
+def _insert_pto_entry(start, end, note, status):
+    db = get_db()
+    segments = _year_segments(start, end)
+    group_id = uuid.uuid4().hex if len(segments) > 1 else None
+    created_at = datetime.now(timezone.utc).isoformat()
+    for seg_start, seg_end in segments:
+        db.execute(
+            "INSERT INTO pto_entries (start_date, end_date, note, status, created_at, group_id) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (seg_start.isoformat(), seg_end.isoformat(), note, status, created_at, group_id),
+        )
+
+
+def _insert_overtime_entry(start, end, note, account, status):
+    db = get_db()
+    segments = _year_segments(start, end)
+    group_id = uuid.uuid4().hex if len(segments) > 1 else None
+    created_at = datetime.now(timezone.utc).isoformat()
+    for seg_start, seg_end in segments:
+        db.execute(
+            "INSERT INTO overtime_entries (start_date, end_date, note, account, status, created_at, group_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (seg_start.isoformat(), seg_end.isoformat(), note, account, status, created_at, group_id),
+        )
 
 
 def _year_has_activity(year):
@@ -293,6 +389,7 @@ def hhmm_to_hours(text):
 def _overtime_entries_with_hours():
     state = get_holiday_state()
     daily = get_daily_hours()
+    group_bounds = _overtime_group_bounds()
     entries = get_db().execute("SELECT * FROM overtime_entries ORDER BY start_date DESC").fetchall()
     result = []
     for e in entries:
@@ -300,6 +397,15 @@ def _overtime_entries_with_hours():
         end = datetime.strptime(e["end_date"], "%Y-%m-%d").date()
         extra = extra_holidays_for_years(start.year, end.year)
         hours = round(count_pto_days(start, end, state, extra) * daily, 2)
+        continues_into = None
+        continued_from = None
+        bounds = group_bounds.get(e["group_id"])
+        if bounds:
+            gmin, gmax = bounds
+            if e["end_date"] != gmax:
+                continues_into = end.year + 1
+            if e["start_date"] != gmin:
+                continued_from = start.year - 1
         result.append(
             {
                 **dict(e),
@@ -307,14 +413,24 @@ def _overtime_entries_with_hours():
                 "hours_hhmm": hours_to_hhmm(hours),
                 "start_display": start.strftime(DISPLAY_DATE_FORMAT),
                 "end_display": end.strftime(DISPLAY_DATE_FORMAT),
+                "continues_into": continues_into,
+                "continued_from": continued_from,
             }
         )
     return result
 
 
 def _overtime_years_with_data():
-    rows = get_db().execute("SELECT DISTINCT strftime('%Y', start_date) AS y FROM overtime_entries").fetchall()
-    return sorted({int(r["y"]) for r in rows if r["y"]}, reverse=True)
+    rows = get_db().execute(
+        "SELECT strftime('%Y', start_date) AS ys, strftime('%Y', end_date) AS ye FROM overtime_entries"
+    ).fetchall()
+    years = set()
+    for r in rows:
+        if r["ys"]:
+            years.add(int(r["ys"]))
+        if r["ye"]:
+            years.add(int(r["ye"]))
+    return sorted(years, reverse=True)
 
 
 def login_required(view):
@@ -414,8 +530,15 @@ def dashboard():
 
 
 def _years_with_data():
-    rows = get_db().execute("SELECT DISTINCT strftime('%Y', start_date) AS y FROM pto_entries").fetchall()
-    years = {int(r["y"]) for r in rows if r["y"]}
+    rows = get_db().execute(
+        "SELECT strftime('%Y', start_date) AS ys, strftime('%Y', end_date) AS ye FROM pto_entries"
+    ).fetchall()
+    years = set()
+    for r in rows:
+        if r["ys"]:
+            years.add(int(r["ys"]))
+        if r["ye"]:
+            years.add(int(r["ye"]))
     years.add(date.today().year)
     return sorted(years, reverse=True)
 
@@ -443,11 +566,7 @@ def add_entry():
             elif overlap:
                 error = f"This overlaps an existing {overlap} entry."
             else:
-                get_db().execute(
-                    "INSERT INTO pto_entries (start_date, end_date, note, status, created_at) "
-                    "VALUES (?, ?, ?, ?, ?)",
-                    (start_date, end_date, note, status, datetime.utcnow().isoformat()),
-                )
+                _insert_pto_entry(start, end, note, status)
                 get_db().commit()
                 return redirect(url_for("dashboard", year=start.year))
     return render_template(
@@ -463,11 +582,18 @@ def add_entry():
 @app.route("/entries/<int:entry_id>/edit", methods=["GET", "POST"])
 @login_required
 def edit_entry(entry_id):
-    db = get_db()
-    entry = db.execute("SELECT * FROM pto_entries WHERE id = ?", (entry_id,)).fetchone()
-    if entry is None:
+    row, group_rows = _pto_entry_group(entry_id)
+    if row is None:
         return redirect(url_for("dashboard"))
-    entry = dict(entry)
+    group_ids = [r["id"] for r in group_rows]
+    is_split = len(group_rows) > 1
+    entry = {
+        "id": entry_id,
+        "start_date": group_rows[0]["start_date"],
+        "end_date": group_rows[-1]["end_date"],
+        "note": row["note"],
+        "status": row["status"],
+    }
     error = None
     if request.method == "POST":
         start_date = request.form.get("start_date", "")
@@ -483,22 +609,24 @@ def edit_entry(entry_id):
         except ValueError:
             error = "Please provide valid dates."
         else:
-            overlap = _overlap_kind(start_date, end_date, exclude_pto_id=entry_id)
+            overlap = _overlap_kind(start_date, end_date, exclude_pto_ids=group_ids)
             if end < start:
                 error = "End date must be on or after the start date."
             elif overlap:
                 error = f"This overlaps an existing {overlap} entry."
             else:
+                db = get_db()
                 db.execute(
-                    "UPDATE pto_entries SET start_date = ?, end_date = ?, note = ?, status = ? WHERE id = ?",
-                    (start_date, end_date, note, status, entry_id),
+                    f"DELETE FROM pto_entries WHERE id IN ({','.join('?' * len(group_ids))})", group_ids
                 )
+                _insert_pto_entry(start, end, note, status)
                 db.commit()
                 return redirect(url_for("dashboard", year=start.year))
     return render_template(
         "add_entry.html",
         error=error,
         entry=entry,
+        is_split=is_split,
         today=date.today().isoformat(),
         statuses=ENTRY_STATUSES,
         holiday_state_name=GERMAN_STATES[get_holiday_state()],
@@ -511,8 +639,14 @@ def update_entry_status(entry_id):
     status = request.form.get("status", "")
     year = request.args.get("year", date.today().year)
     if status in ENTRY_STATUSES:
-        get_db().execute("UPDATE pto_entries SET status = ? WHERE id = ?", (status, entry_id))
-        get_db().commit()
+        db = get_db()
+        row = db.execute("SELECT group_id FROM pto_entries WHERE id = ?", (entry_id,)).fetchone()
+        if row:
+            if row["group_id"]:
+                db.execute("UPDATE pto_entries SET status = ? WHERE group_id = ?", (status, row["group_id"]))
+            else:
+                db.execute("UPDATE pto_entries SET status = ? WHERE id = ?", (status, entry_id))
+            db.commit()
     return redirect(url_for("dashboard", year=year))
 
 
@@ -520,8 +654,14 @@ def update_entry_status(entry_id):
 @login_required
 def delete_entry(entry_id):
     year = request.args.get("year", date.today().year)
-    get_db().execute("DELETE FROM pto_entries WHERE id = ?", (entry_id,))
-    get_db().commit()
+    db = get_db()
+    row = db.execute("SELECT group_id FROM pto_entries WHERE id = ?", (entry_id,)).fetchone()
+    if row:
+        if row["group_id"]:
+            db.execute("DELETE FROM pto_entries WHERE group_id = ?", (row["group_id"],))
+        else:
+            db.execute("DELETE FROM pto_entries WHERE id = ?", (entry_id,))
+        db.commit()
     return redirect(url_for("dashboard", year=year))
 
 
@@ -624,11 +764,7 @@ def add_overtime_entry():
             elif overlap:
                 error = f"This overlaps an existing {overlap} entry."
             else:
-                get_db().execute(
-                    "INSERT INTO overtime_entries (start_date, end_date, note, account, status, created_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?)",
-                    (start_date, end_date, note, account, status, datetime.utcnow().isoformat()),
-                )
+                _insert_overtime_entry(start, end, note, account, status)
                 get_db().commit()
                 return redirect(url_for("overtime"))
     return render_template(
@@ -646,11 +782,19 @@ def add_overtime_entry():
 @app.route("/overtime/entries/<int:entry_id>/edit", methods=["GET", "POST"])
 @login_required
 def edit_overtime_entry(entry_id):
-    db = get_db()
-    entry = db.execute("SELECT * FROM overtime_entries WHERE id = ?", (entry_id,)).fetchone()
-    if entry is None:
+    row, group_rows = _overtime_entry_group(entry_id)
+    if row is None:
         return redirect(url_for("overtime"))
-    entry = dict(entry)
+    group_ids = [r["id"] for r in group_rows]
+    is_split = len(group_rows) > 1
+    entry = {
+        "id": entry_id,
+        "start_date": group_rows[0]["start_date"],
+        "end_date": group_rows[-1]["end_date"],
+        "note": row["note"],
+        "account": row["account"],
+        "status": row["status"],
+    }
     error = None
     if request.method == "POST":
         start_date = request.form.get("start_date", "")
@@ -676,23 +820,24 @@ def edit_overtime_entry(entry_id):
         except ValueError:
             error = "Please provide valid dates."
         else:
-            overlap = _overlap_kind(start_date, end_date, exclude_overtime_id=entry_id)
+            overlap = _overlap_kind(start_date, end_date, exclude_overtime_ids=group_ids)
             if end < start:
                 error = "End date must be on or after the start date."
             elif overlap:
                 error = f"This overlaps an existing {overlap} entry."
             else:
+                db = get_db()
                 db.execute(
-                    "UPDATE overtime_entries SET start_date = ?, end_date = ?, note = ?, account = ?, status = ? "
-                    "WHERE id = ?",
-                    (start_date, end_date, note, account, status, entry_id),
+                    f"DELETE FROM overtime_entries WHERE id IN ({','.join('?' * len(group_ids))})", group_ids
                 )
+                _insert_overtime_entry(start, end, note, account, status)
                 db.commit()
                 return redirect(url_for("overtime"))
     return render_template(
         "overtime_add_entry.html",
         error=error,
         entry=entry,
+        is_split=is_split,
         today=date.today().isoformat(),
         statuses=ENTRY_STATUSES,
         accounts=OVERTIME_ACCOUNTS,
@@ -707,8 +852,16 @@ def update_overtime_entry_status(entry_id):
     status = request.form.get("status", "")
     year = request.args.get("year")
     if status in ENTRY_STATUSES:
-        get_db().execute("UPDATE overtime_entries SET status = ? WHERE id = ?", (status, entry_id))
-        get_db().commit()
+        db = get_db()
+        row = db.execute("SELECT group_id FROM overtime_entries WHERE id = ?", (entry_id,)).fetchone()
+        if row:
+            if row["group_id"]:
+                db.execute(
+                    "UPDATE overtime_entries SET status = ? WHERE group_id = ?", (status, row["group_id"])
+                )
+            else:
+                db.execute("UPDATE overtime_entries SET status = ? WHERE id = ?", (status, entry_id))
+            db.commit()
     return redirect(url_for("overtime", year=year) if year else url_for("overtime"))
 
 
@@ -716,8 +869,14 @@ def update_overtime_entry_status(entry_id):
 @login_required
 def delete_overtime_entry(entry_id):
     year = request.args.get("year")
-    get_db().execute("DELETE FROM overtime_entries WHERE id = ?", (entry_id,))
-    get_db().commit()
+    db = get_db()
+    row = db.execute("SELECT group_id FROM overtime_entries WHERE id = ?", (entry_id,)).fetchone()
+    if row:
+        if row["group_id"]:
+            db.execute("DELETE FROM overtime_entries WHERE group_id = ?", (row["group_id"],))
+        else:
+            db.execute("DELETE FROM overtime_entries WHERE id = ?", (entry_id,))
+        db.commit()
     return redirect(url_for("overtime", year=year) if year else url_for("overtime"))
 
 

@@ -19,6 +19,7 @@
       {% endfor %}
     </select>
     <p class="muted" style="margin-top:10px;">Weekends and {{ holiday_state_name }} public holidays are excluded automatically. Both planned and taken days count against your balance.</p>
+    <p class="muted" style="margin-top:6px;">An entry spanning New Year's is automatically split into one part per year (e.g. 21 Dec &ndash; 10 Jan becomes two linked entries), so each year's balance reflects only its own days.{% if is_split %} This entry is already split &mdash; editing it here edits the whole date range and re-splits it on save.{% endif %}</p>
     <p style="margin-top:16px;">
       <button class="btn" type="submit">{{ 'Save changes' if entry else 'Save' }}</button>
       <a class="btn secondary" href="{{ url_for('dashboard') }}">Cancel</a>

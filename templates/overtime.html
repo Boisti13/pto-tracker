@@ -72,8 +72,14 @@
     <tbody>
       {% for e in entries %}
       <tr>
-        <td data-label="Start">{{ e.start_display }}</td>
-        <td data-label="End">{{ e.end_display }}</td>
+        <td data-label="Start">
+          {{ e.start_display }}
+          {% if e.continued_from %}<span class="badge-continue">&larr; continued from {{ e.continued_from }}</span>{% endif %}
+        </td>
+        <td data-label="End">
+          {{ e.end_display }}
+          {% if e.continues_into %}<span class="badge-continue">&rarr; continues into {{ e.continues_into }}</span>{% endif %}
+        </td>
         <td data-label="Hours">{{ e.hours_hhmm }}</td>
         <td data-label="Note">{{ e.note or "" }}</td>
         <td data-label="Account">{{ accounts[e.account] }}</td>
@@ -92,7 +98,7 @@
           <a class="btn edit" href="{{ url_for('edit_overtime_entry', entry_id=e.id) }}">Edit</a>
           <form class="inline" method="post"
                 action="{{ url_for('delete_overtime_entry', entry_id=e.id, year=year_filter) }}"
-                onsubmit="return confirm('Delete this entry?');">
+                onsubmit="return confirm('Delete this entry?{{ ' This spans multiple years — both parts will be deleted.' if e.group_id else '' }}');">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button class="btn danger" type="submit">Delete</button>
           </form>
