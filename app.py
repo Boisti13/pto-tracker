@@ -1162,6 +1162,7 @@ def _ics_entries(table, kind):
                 "start": start,
                 "end": end,
                 "summary": title,
+                "description": first["note"] or "",
             }
         )
     return events
@@ -1185,8 +1186,10 @@ def _build_ics_feed():
             f"DTSTART;VALUE=DATE:{e['start'].strftime('%Y%m%d')}",
             f"DTEND;VALUE=DATE:{(e['end'] + timedelta(days=1)).strftime('%Y%m%d')}",
             f"SUMMARY:{_ics_escape(e['summary'])}",
-            "END:VEVENT",
         ]
+        if e["description"]:
+            lines.append(f"DESCRIPTION:{_ics_escape(e['description'])}")
+        lines.append("END:VEVENT")
     lines.append("END:VCALENDAR")
     return "\r\n".join(lines) + "\r\n"
 
