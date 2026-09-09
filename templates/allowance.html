@@ -2,6 +2,19 @@
 {% block title %}Settings{% endblock %}
 {% block content %}
 <div class="card">
+  <h2>Calendar view</h2>
+  <p class="muted">Show a month-by-month calendar (in addition to the list view) with PTO, overtime, and holidays marked on it.</p>
+  <form method="post" action="{{ url_for('set_calendar_view') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="checkbox-row">
+      <input type="checkbox" name="calendar_view" value="1" onchange="this.form.submit()"
+             {{ "checked" if calendar_enabled else "" }}>
+      <span>Show calendar view</span>
+    </label>
+  </form>
+</div>
+
+<div class="card">
   <h2>Public holidays</h2>
   <p class="muted">Which German state's public holidays to exclude when counting days used.</p>
   <form method="post" action="{{ url_for('set_holiday_state') }}">

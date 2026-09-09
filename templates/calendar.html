@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Calendar{% endblock %}
+{% block content %}
+
+<div class="year-switch calendar-nav">
+  <a href="{{ url_for('calendar_view', year=prev_year, month=prev_month) }}">&laquo;</a>
+  <span class="cal-month-label">{{ month_label }} {{ year }}</span>
+  <a href="{{ url_for('calendar_view', year=next_year, month=next_month) }}">&raquo;</a>
+</div>
+
+<div class="card">
+  <div class="table-scroll">
+    <table class="calendar-table">
+      <thead>
+        <tr><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th><th>Sun</th></tr>
+      </thead>
+      <tbody>
+        {% for week in weeks %}
+        <tr>
+          {% for day in week %}
+          {% if day is none %}
+          <td class="cal-day empty"></td>
+          {% else %}
+          <td class="cal-day {{ 'weekend' if day.is_weekend else '' }} {{ 'today' if day.is_today else '' }}"
+              title="{{ day.holiday or '' }}{% if day.entry %}{{ ' — ' if day.holiday else '' }}{{ day.entry.note or (day.entry.kind | capitalize) }}{{ ' (half day)' if day.entry.half else '' }}{% endif %}">
+            <span class="cal-daynum">{{ day.day }}</span>
+            {% if day.holiday %}<span class="cal-tag tag-holiday">{{ day.holiday }}</span>{% endif %}
+            {% if day.entry %}
+            <span class="cal-tag {{ 'tag-overtime' if day.entry.kind == 'overtime' else 'tag-' + day.entry.status }}">
+              {{ day.entry.note or (day.entry.kind | capitalize) }}{% if day.entry.half %} &frac12;{% endif %}
+            </span>
+            {% endif %}
+          </td>
+          {% endif %}
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="muted calendar-legend">
+    <span class="cal-tag tag-planned">planned</span>
+    <span class="cal-tag tag-approved">approved</span>
+    <span class="cal-tag tag-taken">taken</span>
+    <span class="cal-tag tag-overtime">overtime</span>
+    <span class="cal-tag tag-holiday">{{ holiday_state_name }} holiday</span>
+  </p>
+</div>
+
+{% endblock %}

@@ -5,7 +5,8 @@ import secrets
 import sqlite3
 import tempfile
 import uuid
-from datetime import date, datetime, timezone
+from calendar import Calendar, month_name as MONTH_NAMES, monthrange
+from datetime import date, datetime, timedelta, timezone
 from functools import wraps
 
 from flask import Flask, Response, abort, flash, g, redirect, render_template, request, send_file, session, url_for
@@ -141,6 +142,17 @@ def admin_configured():
 def get_holiday_state():
     state = get_setting("holiday_state", DEFAULT_STATE)
     return state if state in GERMAN_STATES else DEFAULT_STATE
+
+
+def calendar_view_enabled():
+    return get_setting("calendar_view_enabled", "0") == "1"
+
+
+@app.context_processor
+def inject_calendar_nav_flag():
+    if not session.get("logged_in"):
+        return {}
+    return {"calendar_enabled": calendar_view_enabled()}
 
 
 EXTRA_HOLIDAYS = [("dec24", "Heiligabend", 12, 24), ("dec31", "Silvester", 12, 31)]
@@ -979,6 +991,87 @@ def export_overtime_csv():
     )
 
 
+def _shift_month(year, month, delta):
+    total = year * 12 + (month - 1) + delta
+    return total // 12, total % 12 + 1
+
+
+def _calendar_month(year, month):
+    state = get_holiday_state()
+    extra = extra_holidays_for_years(year, year)
+    month_start = date(year, month, 1)
+    month_end = date(year, month, monthrange(year, month)[1])
+    holidays = holidays_in_range(month_start, month_end, state, extra)
+
+    entries_by_day = {}
+    db = get_db()
+    for table, kind in (("pto_entries", "pto"), ("overtime_entries", "overtime")):
+        rows = db.execute(
+            f"SELECT * FROM {table} WHERE start_date <= ? AND end_date >= ?",
+            (month_end.isoformat(), month_start.isoformat()),
+        ).fetchall()
+        for r in rows:
+            rstart = datetime.strptime(r["start_date"], "%Y-%m-%d").date()
+            rend = datetime.strptime(r["end_date"], "%Y-%m-%d").date()
+            d = max(rstart, month_start)
+            while d <= min(rend, month_end):
+                half = (r["half_day"] == "start" and d == rstart) or (r["half_day"] == "end" and d == rend)
+                entries_by_day[d] = {
+                    "kind": kind,
+                    "status": r["status"],
+                    "note": r["note"],
+                    "half": half,
+                    "account": r["account"] if kind == "overtime" else None,
+                }
+                d += timedelta(days=1)
+
+    weeks = []
+    for week in Calendar(firstweekday=0).monthdayscalendar(year, month):
+        row = []
+        for day_num in week:
+            if day_num == 0:
+                row.append(None)
+                continue
+            d = date(year, month, day_num)
+            row.append(
+                {
+                    "day": day_num,
+                    "is_weekend": d.weekday() >= 5,
+                    "holiday": holidays.get(d),
+                    "entry": entries_by_day.get(d),
+                    "is_today": d == date.today(),
+                }
+            )
+        weeks.append(row)
+    return weeks
+
+
+@app.route("/calendar")
+@login_required
+def calendar_view():
+    if not calendar_view_enabled():
+        return redirect(url_for("dashboard"))
+    today = date.today()
+    year = int(request.args.get("year", today.year))
+    month = int(request.args.get("month", today.month))
+    if not 1 <= month <= 12:
+        year, month = _shift_month(year, 1, month - 1)
+    prev_year, prev_month = _shift_month(year, month, -1)
+    next_year, next_month = _shift_month(year, month, 1)
+    return render_template(
+        "calendar.html",
+        year=year,
+        month=month,
+        month_label=MONTH_NAMES[month],
+        weeks=_calendar_month(year, month),
+        prev_year=prev_year,
+        prev_month=prev_month,
+        next_year=next_year,
+        next_month=next_month,
+        holiday_state_name=GERMAN_STATES[get_holiday_state()],
+    )
+
+
 @app.route("/allowance", methods=["GET", "POST"])
 @login_required
 def allowance():
@@ -1022,6 +1115,13 @@ def set_holiday_state():
         set_setting("holiday_state", state)
     set_setting("extra_holiday_dec24", "1" if request.form.get("extra_dec24") == "1" else "0")
     set_setting("extra_holiday_dec31", "1" if request.form.get("extra_dec31") == "1" else "0")
+    return redirect(url_for("allowance"))
+
+
+@app.route("/settings/calendar-view", methods=["POST"])
+@login_required
+def set_calendar_view():
+    set_setting("calendar_view_enabled", "1" if request.form.get("calendar_view") == "1" else "0")
     return redirect(url_for("allowance"))
 
 

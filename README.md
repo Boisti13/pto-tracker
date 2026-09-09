@@ -34,9 +34,12 @@ system, no database server, no build step — just Python and SQLite.
 - **Overtime tracking**, on its own tab. Track two independent hour balances
   (e.g. a main account and a second bank like AMA) in H:MM format, set your
   weekly paid hours, and log time off taken against either account. Only
-  entries still marked "planned" count against the balance shown, so you can
+  entries not yet marked "taken" count against the balance shown, so you can
   freely re-sync the balance from your employer's system without
   double-counting anything already reflected in it.
+- **Optional calendar view.** Turn it on in Settings to get a month-by-month
+  grid alongside the list view, with PTO, overtime, and public holidays all
+  marked on it.
 - **CSV export** for both PTO and overtime entries.
 - Mobile-friendly — usable on a phone down to a 320px-wide screen.
 - No JavaScript framework, no external CDN dependency — works entirely on
