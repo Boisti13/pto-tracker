@@ -3,21 +3,10 @@
 {% block content %}
 
 <div class="year-switch calendar-nav">
-  <a href="{{ url_for('calendar_view', year=prev_year, month=prev_month, span=span) }}">&laquo;</a>
+  <a href="{{ url_for('calendar_view', year=prev_year, month=prev_month) }}">&laquo;</a>
   <span class="cal-month-label">{{ months[0].label }}{% if months | length > 1 %} &ndash; {{ months[-1].label }}{% endif %}</span>
-  <a href="{{ url_for('calendar_view', year=next_year, month=next_month, span=span) }}">&raquo;</a>
+  <a href="{{ url_for('calendar_view', year=next_year, month=next_month) }}">&raquo;</a>
 </div>
-
-<form method="get" action="{{ url_for('calendar_view') }}" class="calendar-span-row">
-  <input type="hidden" name="year" value="{{ year }}">
-  <input type="hidden" name="month" value="{{ month }}">
-  <label for="span">Show</label>
-  <select id="span" name="span" onchange="this.form.submit()">
-    {% for s in spans %}
-    <option value="{{ s }}" {{ "selected" if s == span else "" }}>{{ s }} month{{ "s" if s > 1 else "" }} at once</option>
-    {% endfor %}
-  </select>
-</form>
 
 {% for m in months %}
 <div class="card">

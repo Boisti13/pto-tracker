@@ -1005,6 +1005,7 @@ def _calendar_month(year, month):
 
     entries_by_day = {}
     db = get_db()
+    group_bounds = {"pto": _pto_group_bounds(), "overtime": _overtime_group_bounds()}
     for table, kind in (("pto_entries", "pto"), ("overtime_entries", "overtime")):
         rows = db.execute(
             f"SELECT * FROM {table} WHERE start_date <= ? AND end_date >= ?",
@@ -1013,6 +1014,12 @@ def _calendar_month(year, month):
         for r in rows:
             rstart = datetime.strptime(r["start_date"], "%Y-%m-%d").date()
             rend = datetime.strptime(r["end_date"], "%Y-%m-%d").date()
+            # A row split at a year boundary only knows its own segment's
+            # start/end — follow group_id to the real edges of the whole entry
+            # so "continues"/"continued" reflect the actual trip, not the segment.
+            bounds = group_bounds[kind].get(r["group_id"])
+            true_start = datetime.strptime(bounds[0], "%Y-%m-%d").date() if bounds else rstart
+            true_end = datetime.strptime(bounds[1], "%Y-%m-%d").date() if bounds else rend
             d = max(rstart, month_start)
             while d <= min(rend, month_end):
                 half = (r["half_day"] == "start" and d == rstart) or (r["half_day"] == "end" and d == rend)
@@ -1024,8 +1031,8 @@ def _calendar_month(year, month):
                     "account": r["account"] if kind == "overtime" else None,
                     # flags whether the entry actually runs past this rendered month's
                     # edge, so a one-month-at-a-time view doesn't hide the rest of it
-                    "continued_before": d == month_start and rstart < month_start,
-                    "continues_after": d == month_end and rend > month_end,
+                    "continued_before": d == month_start and true_start < month_start,
+                    "continues_after": d == month_end and true_end > month_end,
                 }
                 d += timedelta(days=1)
 
@@ -1050,7 +1057,38 @@ def _calendar_month(year, month):
     return weeks
 
 
-CALENDAR_SPANS = (1, 2, 3, 6)
+CALENDAR_MAX_SPAN = 6
+
+
+def _auto_span(year, month, max_span=CALENDAR_MAX_SPAN):
+    """How many months, starting at (year, month), are needed so every entry
+    touching the anchor month is shown in full — capped at max_span so one very
+    long entry can't blow the page up indefinitely (it just gets a "continues"
+    arrow instead, same as before this existed)."""
+    anchor_start = date(year, month, 1)
+    anchor_end = date(year, month, monthrange(year, month)[1])
+    db = get_db()
+    pto_bounds = _pto_group_bounds()
+    overtime_bounds = _overtime_group_bounds()
+    farthest_end = anchor_end
+    for table, bounds in (("pto_entries", pto_bounds), ("overtime_entries", overtime_bounds)):
+        rows = db.execute(
+            f"SELECT end_date, group_id FROM {table} WHERE start_date <= ? AND end_date >= ?",
+            (anchor_end.isoformat(), anchor_start.isoformat()),
+        ).fetchall()
+        for r in rows:
+            # A row split at a year boundary only knows its own segment's end —
+            # follow group_id to the real end of the whole entry.
+            end_str = bounds[r["group_id"]][1] if r["group_id"] in bounds else r["end_date"]
+            rend = datetime.strptime(end_str, "%Y-%m-%d").date()
+            if rend > farthest_end:
+                farthest_end = rend
+    span = 1
+    y, m = year, month
+    while span < max_span and date(y, m, monthrange(y, m)[1]) < farthest_end:
+        y, m = _shift_month(y, m, 1)
+        span += 1
+    return span
 
 
 @app.route("/calendar")
@@ -1063,12 +1101,7 @@ def calendar_view():
     month = int(request.args.get("month", today.month))
     if not 1 <= month <= 12:
         year, month = _shift_month(year, 1, month - 1)
-    try:
-        span = int(request.args.get("span", 1))
-    except ValueError:
-        span = 1
-    if span not in CALENDAR_SPANS:
-        span = 1
+    span = _auto_span(year, month)
     prev_year, prev_month = _shift_month(year, month, -span)
     next_year, next_month = _shift_month(year, month, span)
     months = []
@@ -1077,10 +1110,6 @@ def calendar_view():
         months.append({"year": y, "month": m, "label": f"{MONTH_NAMES[m]} {y}", "weeks": _calendar_month(y, m)})
     return render_template(
         "calendar.html",
-        year=year,
-        month=month,
-        span=span,
-        spans=CALENDAR_SPANS,
         months=months,
         prev_year=prev_year,
         prev_month=prev_month,

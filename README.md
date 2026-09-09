@@ -39,9 +39,10 @@ system, no database server, no build step — just Python and SQLite.
   double-counting anything already reflected in it.
 - **Optional calendar view.** Turn it on in Settings to get a calendar grid
   alongside the list view, with PTO, overtime, and public holidays all marked
-  on it. Shows 1, 2, 3, or 6 months at once (your choice) so a vacation
-  spanning multiple months — or across New Year's — is visible in one place;
-  an arrow on the edge day marks when it continues beyond what's shown.
+  on it. It automatically shows as many months as needed (up to 6) so a
+  vacation spanning multiple months — or across New Year's — is always
+  visible in full, no manual range-picking required; an arrow on the edge
+  day marks the rare case where it still runs past that.
 - **CSV export** for both PTO and overtime entries.
 - Mobile-friendly — usable on a phone down to a 320px-wide screen.
 - No JavaScript framework, no external CDN dependency — works entirely on

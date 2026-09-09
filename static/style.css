@@ -236,16 +236,6 @@ input[type="checkbox"] { width: auto; padding: 0; }
 .calendar-nav { justify-content: center; }
 .cal-month-label { font-weight: 600; min-width: 140px; text-align: center; }
 
-.calendar-span-row {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 16px;
-}
-.calendar-span-row label { display: inline; margin: 0; color: var(--muted); font-size: 0.85rem; }
-.calendar-span-row select { width: auto; }
-
 .cal-block-label { margin: 0 0 10px; font-size: 1rem; }
 
 .table-scroll { overflow-x: auto; }
