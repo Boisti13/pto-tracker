@@ -74,10 +74,12 @@
       <tr>
         <td data-label="Start">
           {{ e.start_display }}
+          {% if e.half_day == "start" %}<span class="badge-half">&frac12; day</span>{% endif %}
           {% if e.continued_from %}<span class="badge-continue">&larr; continued from {{ e.continued_from }}</span>{% endif %}
         </td>
         <td data-label="End">
           {{ e.end_display }}
+          {% if e.half_day == "end" %}<span class="badge-half">&frac12; day</span>{% endif %}
           {% if e.continues_into %}<span class="badge-continue">&rarr; continues into {{ e.continues_into }}</span>{% endif %}
         </td>
         <td data-label="Hours">{{ e.hours_hhmm }}</td>

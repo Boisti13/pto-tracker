@@ -223,3 +223,11 @@ input[type="checkbox"] { width: auto; padding: 0; }
   margin-top: 2px;
   white-space: nowrap;
 }
+
+.badge-half {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-top: 2px;
+  white-space: nowrap;
+}

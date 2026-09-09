@@ -19,6 +19,13 @@ system, no database server, no build step — just Python and SQLite.
   actually taken versus still just planned — change the status inline as
   plans firm up. Entries can be edited or deleted after the fact, and
   overlapping date ranges are rejected.
+- **Half-day entries.** Mark the first or last day of an entry as a half day
+  (e.g. leaving early or coming in late) and it counts as 0.5 days/hours
+  instead of a full one.
+- **Entries spanning New Year's are split automatically**, one part per
+  calendar year, so each year's balance only reflects its own days — the
+  dashboard shows a "continues into"/"continued from" note linking the parts,
+  and editing, deleting, or changing status on either part acts on both.
 - **Automatic carryover.** Whatever's left of one year's balance
   (allowance + its own carryover − used) rolls into the next year on its own.
   You can still override it per year (e.g. if your employer caps carryover).

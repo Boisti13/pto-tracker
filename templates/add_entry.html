@@ -18,6 +18,12 @@
       <option value="{{ s }}" {{ "selected" if (entry and entry.status == s) else "" }}>{{ s | capitalize }}</option>
       {% endfor %}
     </select>
+    <label for="half_day">Half day</label>
+    <select id="half_day" name="half_day">
+      <option value="" {{ "selected" if not (entry and entry.half_day) else "" }}>No &mdash; full day(s)</option>
+      <option value="start" {{ "selected" if (entry and entry.half_day == "start") else "" }}>Yes &mdash; first day is a half day</option>
+      <option value="end" {{ "selected" if (entry and entry.half_day == "end") else "" }}>Yes &mdash; last day is a half day</option>
+    </select>
     <p class="muted" style="margin-top:10px;">Weekends and {{ holiday_state_name }} public holidays are excluded automatically. Both planned and taken days count against your balance.</p>
     <p class="muted" style="margin-top:6px;">An entry spanning New Year's is automatically split into one part per year (e.g. 21 Dec &ndash; 10 Jan becomes two linked entries), so each year's balance reflects only its own days.{% if is_split %} This entry is already split &mdash; editing it here edits the whole date range and re-splits it on save.{% endif %}</p>
     <p style="margin-top:16px;">

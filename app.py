@@ -11,12 +11,13 @@ from functools import wraps
 from flask import Flask, Response, abort, flash, g, redirect, render_template, request, send_file, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from holidays import DEFAULT_STATE, GERMAN_STATES, count_pto_days, state_holidays
+from holidays import DEFAULT_STATE, GERMAN_STATES, count_pto_days, holidays_in_range, is_workday, state_holidays
 
 DB_PATH = os.environ.get("PTO_DB_PATH", os.path.join(os.path.dirname(__file__), "data", "pto.db"))
 DEFAULT_ALLOWANCE = 30
 DEFAULT_WEEKLY_HOURS = 39.0
 ENTRY_STATUSES = ("planned", "taken")
+HALF_DAY_OPTIONS = ("start", "end")
 OVERTIME_ACCOUNTS = {"main": "Overtime", "ama": "AMA"}
 DISPLAY_DATE_FORMAT = "%d-%m-%Y"
 
@@ -99,9 +100,15 @@ def init_db():
     if "group_id" not in columns:
         db.execute("ALTER TABLE pto_entries ADD COLUMN group_id TEXT")
         db.commit()
+    if "half_day" not in columns:
+        db.execute("ALTER TABLE pto_entries ADD COLUMN half_day TEXT")
+        db.commit()
     overtime_columns = {row[1] for row in db.execute("PRAGMA table_info(overtime_entries)")}
     if "group_id" not in overtime_columns:
         db.execute("ALTER TABLE overtime_entries ADD COLUMN group_id TEXT")
+        db.commit()
+    if "half_day" not in overtime_columns:
+        db.execute("ALTER TABLE overtime_entries ADD COLUMN half_day TEXT")
         db.commit()
     if db.execute("SELECT 1 FROM settings WHERE key = 'secret_key'").fetchone() is None:
         db.execute(
@@ -169,6 +176,16 @@ def get_allowance(year):
     return float(get_setting("default_allowance", DEFAULT_ALLOWANCE))
 
 
+def _half_day_discount(half_day, clipped_start, clipped_end, state, extra):
+    """0.5 if the flagged boundary is actually a counted workday, else 0 (a half
+    day marked on a weekend/holiday has nothing to discount)."""
+    if not half_day:
+        return 0.0
+    boundary = clipped_start if half_day == "start" else clipped_end
+    holidays = holidays_in_range(clipped_start, clipped_end, state, extra)
+    return 0.5 if is_workday(boundary, holidays) else 0.0
+
+
 def _entries_with_days(year):
     state = get_holiday_state()
     extra = extra_holidays_for_years(year, year)
@@ -186,6 +203,9 @@ def _entries_with_days(year):
         clipped_start = max(start, date(year, 1, 1))
         clipped_end = min(end, date(year, 12, 31))
         days = count_pto_days(clipped_start, clipped_end, state, extra)
+        discount = _half_day_discount(e["half_day"], clipped_start, clipped_end, state, extra)
+        if discount:
+            days -= discount
         continues_into = None
         continued_from = None
         bounds = group_bounds.get(e["group_id"])
@@ -292,29 +312,58 @@ def _overtime_entry_group(entry_id):
     return row, [row]
 
 
-def _insert_pto_entry(start, end, note, status):
+def _segment_half_day(seg_start, seg_end, start, end, half_day):
+    """Only the segment actually touching the flagged boundary keeps the half-day
+    marker — e.g. a "half day at end" on a split entry belongs to the last segment,
+    not every year it was cut into."""
+    if half_day == "start" and seg_start == start:
+        return "start"
+    if half_day == "end" and seg_end == end:
+        return "end"
+    return None
+
+
+def _insert_pto_entry(start, end, note, status, half_day=None):
     db = get_db()
     segments = _year_segments(start, end)
     group_id = uuid.uuid4().hex if len(segments) > 1 else None
     created_at = datetime.now(timezone.utc).isoformat()
     for seg_start, seg_end in segments:
         db.execute(
-            "INSERT INTO pto_entries (start_date, end_date, note, status, created_at, group_id) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (seg_start.isoformat(), seg_end.isoformat(), note, status, created_at, group_id),
+            "INSERT INTO pto_entries (start_date, end_date, note, status, created_at, group_id, half_day) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                seg_start.isoformat(),
+                seg_end.isoformat(),
+                note,
+                status,
+                created_at,
+                group_id,
+                _segment_half_day(seg_start, seg_end, start, end, half_day),
+            ),
         )
 
 
-def _insert_overtime_entry(start, end, note, account, status):
+def _insert_overtime_entry(start, end, note, account, status, half_day=None):
     db = get_db()
     segments = _year_segments(start, end)
     group_id = uuid.uuid4().hex if len(segments) > 1 else None
     created_at = datetime.now(timezone.utc).isoformat()
     for seg_start, seg_end in segments:
         db.execute(
-            "INSERT INTO overtime_entries (start_date, end_date, note, account, status, created_at, group_id) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (seg_start.isoformat(), seg_end.isoformat(), note, account, status, created_at, group_id),
+            "INSERT INTO overtime_entries "
+            "(start_date, end_date, note, account, status, created_at, group_id, half_day) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                seg_start.isoformat(),
+                seg_end.isoformat(),
+                note,
+                account,
+                status,
+                created_at,
+                group_id,
+                _segment_half_day(seg_start, seg_end, start, end, half_day),
+            ),
         )
 
 
@@ -396,7 +445,9 @@ def _overtime_entries_with_hours():
         start = datetime.strptime(e["start_date"], "%Y-%m-%d").date()
         end = datetime.strptime(e["end_date"], "%Y-%m-%d").date()
         extra = extra_holidays_for_years(start.year, end.year)
-        hours = round(count_pto_days(start, end, state, extra) * daily, 2)
+        days = count_pto_days(start, end, state, extra)
+        days -= _half_day_discount(e["half_day"], start, end, state, extra)
+        hours = round(days * daily, 2)
         continues_into = None
         continued_from = None
         bounds = group_bounds.get(e["group_id"])
@@ -558,6 +609,9 @@ def add_entry():
         status = request.form.get("status", "planned")
         if status not in ENTRY_STATUSES:
             status = "planned"
+        half_day = request.form.get("half_day") or None
+        if half_day not in HALF_DAY_OPTIONS:
+            half_day = None
         try:
             start = datetime.strptime(start_date, "%Y-%m-%d").date()
             end = datetime.strptime(end_date, "%Y-%m-%d").date()
@@ -570,7 +624,7 @@ def add_entry():
             elif overlap:
                 error = f"This overlaps an existing {overlap} entry."
             else:
-                _insert_pto_entry(start, end, note, status)
+                _insert_pto_entry(start, end, note, status, half_day)
                 get_db().commit()
                 return redirect(url_for("dashboard", year=start.year))
     return render_template(
@@ -597,6 +651,7 @@ def edit_entry(entry_id):
         "end_date": group_rows[-1]["end_date"],
         "note": row["note"],
         "status": row["status"],
+        "half_day": group_rows[0]["half_day"] or group_rows[-1]["half_day"],
     }
     error = None
     if request.method == "POST":
@@ -606,7 +661,17 @@ def edit_entry(entry_id):
         status = request.form.get("status", "planned")
         if status not in ENTRY_STATUSES:
             status = "planned"
-        entry = {"id": entry_id, "start_date": start_date, "end_date": end_date, "note": note, "status": status}
+        half_day = request.form.get("half_day") or None
+        if half_day not in HALF_DAY_OPTIONS:
+            half_day = None
+        entry = {
+            "id": entry_id,
+            "start_date": start_date,
+            "end_date": end_date,
+            "note": note,
+            "status": status,
+            "half_day": half_day,
+        }
         try:
             start = datetime.strptime(start_date, "%Y-%m-%d").date()
             end = datetime.strptime(end_date, "%Y-%m-%d").date()
@@ -623,7 +688,7 @@ def edit_entry(entry_id):
                 db.execute(
                     f"DELETE FROM pto_entries WHERE id IN ({','.join('?' * len(group_ids))})", group_ids
                 )
-                _insert_pto_entry(start, end, note, status)
+                _insert_pto_entry(start, end, note, status, half_day)
                 db.commit()
                 return redirect(url_for("dashboard", year=start.year))
     return render_template(
@@ -673,13 +738,13 @@ def delete_entry(entry_id):
 @login_required
 def export_pto_csv():
     entries = get_db().execute(
-        "SELECT start_date, end_date, note, status FROM pto_entries ORDER BY start_date"
+        "SELECT start_date, end_date, note, status, half_day FROM pto_entries ORDER BY start_date"
     ).fetchall()
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["start_date", "end_date", "note", "status"])
+    writer.writerow(["start_date", "end_date", "note", "status", "half_day"])
     for e in entries:
-        writer.writerow([e["start_date"], e["end_date"], e["note"] or "", e["status"]])
+        writer.writerow([e["start_date"], e["end_date"], e["note"] or "", e["status"], e["half_day"] or ""])
     return Response(
         output.getvalue(),
         mimetype="text/csv",
@@ -756,6 +821,9 @@ def add_overtime_entry():
             account = "main"
         if status not in ENTRY_STATUSES:
             status = "planned"
+        half_day = request.form.get("half_day") or None
+        if half_day not in HALF_DAY_OPTIONS:
+            half_day = None
         try:
             start = datetime.strptime(start_date, "%Y-%m-%d").date()
             end = datetime.strptime(end_date, "%Y-%m-%d").date()
@@ -768,7 +836,7 @@ def add_overtime_entry():
             elif overlap:
                 error = f"This overlaps an existing {overlap} entry."
             else:
-                _insert_overtime_entry(start, end, note, account, status)
+                _insert_overtime_entry(start, end, note, account, status, half_day)
                 get_db().commit()
                 return redirect(url_for("overtime"))
     return render_template(
@@ -798,6 +866,7 @@ def edit_overtime_entry(entry_id):
         "note": row["note"],
         "account": row["account"],
         "status": row["status"],
+        "half_day": group_rows[0]["half_day"] or group_rows[-1]["half_day"],
     }
     error = None
     if request.method == "POST":
@@ -810,6 +879,9 @@ def edit_overtime_entry(entry_id):
             account = "main"
         if status not in ENTRY_STATUSES:
             status = "planned"
+        half_day = request.form.get("half_day") or None
+        if half_day not in HALF_DAY_OPTIONS:
+            half_day = None
         entry = {
             "id": entry_id,
             "start_date": start_date,
@@ -817,6 +889,7 @@ def edit_overtime_entry(entry_id):
             "note": note,
             "account": account,
             "status": status,
+            "half_day": half_day,
         }
         try:
             start = datetime.strptime(start_date, "%Y-%m-%d").date()
@@ -834,7 +907,7 @@ def edit_overtime_entry(entry_id):
                 db.execute(
                     f"DELETE FROM overtime_entries WHERE id IN ({','.join('?' * len(group_ids))})", group_ids
                 )
-                _insert_overtime_entry(start, end, note, account, status)
+                _insert_overtime_entry(start, end, note, account, status, half_day)
                 db.commit()
                 return redirect(url_for("overtime"))
     return render_template(
@@ -888,13 +961,15 @@ def delete_overtime_entry(entry_id):
 @login_required
 def export_overtime_csv():
     entries = get_db().execute(
-        "SELECT start_date, end_date, note, account, status FROM overtime_entries ORDER BY start_date"
+        "SELECT start_date, end_date, note, account, status, half_day FROM overtime_entries ORDER BY start_date"
     ).fetchall()
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["start_date", "end_date", "note", "account", "status"])
+    writer.writerow(["start_date", "end_date", "note", "account", "status", "half_day"])
     for e in entries:
-        writer.writerow([e["start_date"], e["end_date"], e["note"] or "", e["account"], e["status"]])
+        writer.writerow(
+            [e["start_date"], e["end_date"], e["note"] or "", e["account"], e["status"], e["half_day"] or ""]
+        )
     return Response(
         output.getvalue(),
         mimetype="text/csv",

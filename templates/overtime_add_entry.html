@@ -24,6 +24,12 @@
       <option value="{{ s }}" {{ "selected" if (entry and entry.status == s) else "" }}>{{ s | capitalize }}</option>
       {% endfor %}
     </select>
+    <label for="half_day">Half day</label>
+    <select id="half_day" name="half_day">
+      <option value="" {{ "selected" if not (entry and entry.half_day) else "" }}>No &mdash; full day(s)</option>
+      <option value="start" {{ "selected" if (entry and entry.half_day == "start") else "" }}>Yes &mdash; first day is a half day</option>
+      <option value="end" {{ "selected" if (entry and entry.half_day == "end") else "" }}>Yes &mdash; last day is a half day</option>
+    </select>
     <p class="muted" style="margin-top:10px;">
       Weekends and {{ holiday_state_name }} public holidays are excluded automatically. Hours are computed from
       your weekly paid hours ({{ daily_hours | round(2) }}h/day). Only <strong>planned</strong> entries count
