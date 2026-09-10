@@ -77,11 +77,11 @@ system, no database server, no build step — just Python and SQLite.
   with a "Back up now" button for an on-demand one and a list of stored
   backups to download or delete. On top of (not instead of) the manual
   "Download backup" button, which still works the same as always.
-- **In-app updates.** Settings shows exactly which branch and commit is
-  running, with a "Check for updates" button and an "Update now" button that
-  pulls the latest code for whichever branch you're on, reinstalls
-  dependencies, and restarts itself — no SSH session required for routine
-  updates.
+- **In-app updates.** Settings shows the current version number plus exactly
+  which branch and commit is running, with a "Check for updates" button and
+  an "Update now" button that pulls the latest code for whichever branch
+  you're on, reinstalls dependencies, and restarts itself — no SSH session
+  required for routine updates.
 - **CSV export and import** for PTO, overtime, and sick-leave entries, each
   on its own tab — import uses the exact same columns the export produces,
   so round-tripping or backfilling from a spreadsheet just works. It's
