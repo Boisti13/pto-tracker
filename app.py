@@ -2105,11 +2105,12 @@ def check_for_update():
     if APP_VERSION["commit"] is None:
         flash("Not a git checkout — can't check for updates.", "error")
         return redirect(url_for("allowance"))
-    ok, out = _run_git(["fetch", "origin", "master"])
+    branch = APP_VERSION["branch"]
+    ok, out = _run_git(["fetch", "origin", branch])
     if not ok:
         flash("Could not reach GitHub to check for updates: " + out[-300:], "error")
         return redirect(url_for("allowance"))
-    ok, count_out = _run_git(["rev-list", "--count", "HEAD..origin/master"])
+    ok, count_out = _run_git(["rev-list", "--count", f"HEAD..origin/{branch}"])
     if not ok:
         flash("Could not determine update status: " + count_out[-300:], "error")
         return redirect(url_for("allowance"))
@@ -2117,12 +2118,12 @@ def check_for_update():
     if n == 0:
         flash("Already up to date.", "success")
     else:
-        _, log = _run_git(["log", "--oneline", "HEAD..origin/master"])
+        _, log = _run_git(["log", "--oneline", f"HEAD..origin/{branch}"])
         titles = log.strip().splitlines()
         summary = " | ".join(titles[:5])
         if len(titles) > 5:
             summary += " | …"
-        flash(f"{n} update{'s' if n != 1 else ''} available: {summary}", "success")
+        flash(f"{n} update{'s' if n != 1 else ''} available on {branch}: {summary}", "success")
     return redirect(url_for("allowance"))
 
 
@@ -2139,11 +2140,12 @@ def apply_update():
     if APP_VERSION["commit"] is None:
         flash("Not a git checkout — can't auto-update.", "error")
         return redirect(url_for("allowance"))
-    ok, out = _run_git(["fetch", "origin", "master"])
+    branch = APP_VERSION["branch"]
+    ok, out = _run_git(["fetch", "origin", branch])
     if not ok:
         flash("Update failed: could not fetch from GitHub. " + out[-300:], "error")
         return redirect(url_for("allowance"))
-    ok, out = _run_git(["reset", "--hard", "origin/master"])
+    ok, out = _run_git(["reset", "--hard", f"origin/{branch}"])
     if not ok:
         flash("Update failed while resetting to the latest version. " + out[-300:], "error")
         return redirect(url_for("allowance"))

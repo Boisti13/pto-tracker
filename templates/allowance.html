@@ -243,7 +243,7 @@
       <button class="btn secondary" type="submit">Check for updates</button>
     </form>
     <form method="post" action="{{ url_for('apply_update') }}"
-          onsubmit="return confirm('Pull the latest master and restart the service now? The app will be briefly unavailable while it restarts.');">
+          onsubmit="return confirm('Pull the latest ' + {{ app_version.branch | tojson }} + ' and restart the service now? The app will be briefly unavailable while it restarts.');">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button class="btn" type="submit">Update now</button>
     </form>
