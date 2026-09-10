@@ -229,5 +229,25 @@
   <p class="muted">
     <a href="https://github.com/Boisti13/pto-tracker" target="_blank" rel="noopener">PTO Tracker on GitHub</a>
   </p>
+  <p class="muted" style="margin-top:8px;">
+    {% if app_version.commit %}
+    Running <strong>{{ app_version.branch }}</strong> @ <code>{{ app_version.commit }}</code>{% if app_version.message %} &mdash; {{ app_version.message }}{% endif %}
+    {% else %}
+    Not installed from a git checkout &mdash; updates aren't available here.
+    {% endif %}
+  </p>
+  {% if app_version.commit %}
+  <div style="margin-top:16px; display:flex; gap:8px; flex-wrap:wrap;">
+    <form method="post" action="{{ url_for('check_for_update') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn secondary" type="submit">Check for updates</button>
+    </form>
+    <form method="post" action="{{ url_for('apply_update') }}"
+          onsubmit="return confirm('Pull the latest master and restart the service now? The app will be briefly unavailable while it restarts.');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn" type="submit">Update now</button>
+    </form>
+  </div>
+  {% endif %}
 </div>
 {% endblock %}

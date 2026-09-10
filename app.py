@@ -3,7 +3,10 @@ import io
 import os
 import re
 import secrets
+import signal
 import sqlite3
+import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -17,6 +20,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from holidays import DEFAULT_STATE, GERMAN_STATES, count_pto_days, holidays_in_range, is_workday, state_holidays
 
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("PTO_DB_PATH", os.path.join(os.path.dirname(__file__), "data", "pto.db"))
 DEFAULT_ALLOWANCE = 30
 DEFAULT_WEEKLY_HOURS = 39.0
@@ -26,6 +30,36 @@ OVERTIME_ACCOUNTS = {"main": "Overtime", "ama": "AMA"}
 DISPLAY_DATE_FORMAT = "%d-%m-%Y"
 
 app = Flask(__name__)
+
+
+def _run_git(args, timeout=30):
+    """Runs git in APP_DIR. No user input ever reaches this — every call site
+    passes a fixed argument list, never anything from a request."""
+    try:
+        result = subprocess.run(
+            ["git"] + args, cwd=APP_DIR, capture_output=True, text=True, timeout=timeout
+        )
+        return result.returncode == 0, (result.stdout or "") + (result.stderr or "")
+    except (subprocess.SubprocessError, OSError) as e:
+        return False, str(e)
+
+
+def _get_app_version():
+    if not os.path.isdir(os.path.join(APP_DIR, ".git")):
+        return {"branch": None, "commit": None, "message": ""}
+    ok, commit = _run_git(["rev-parse", "--short", "HEAD"])
+    if not ok:
+        return {"branch": None, "commit": None, "message": ""}
+    _, branch = _run_git(["rev-parse", "--abbrev-ref", "HEAD"])
+    _, message = _run_git(["log", "-1", "--pretty=%s"])
+    return {"branch": branch.strip(), "commit": commit.strip(), "message": message.strip()}
+
+
+# Computed once at import time — a gunicorn worker reload (which is how
+# "Update now" restarts the app) re-imports this module fresh, so it's
+# always accurate for whatever code is actually running, without needing
+# to shell out to git on every Settings page load.
+APP_VERSION = _get_app_version()
 
 
 def get_csrf_token():
@@ -1778,6 +1812,7 @@ def allowance():
         backup_last_at_display=_format_backup_last_at(),
         backup_last_auto_display=_format_backup_last_auto_at(),
         stored_backups=_list_backups(),
+        app_version=APP_VERSION,
     )
 
 
@@ -2062,6 +2097,69 @@ def download_backup():
     )
     response.call_on_close(lambda: os.remove(tmp_path))
     return response
+
+
+@app.route("/settings/update/check", methods=["POST"])
+@login_required
+def check_for_update():
+    if APP_VERSION["commit"] is None:
+        flash("Not a git checkout — can't check for updates.", "error")
+        return redirect(url_for("allowance"))
+    ok, out = _run_git(["fetch", "origin", "master"])
+    if not ok:
+        flash("Could not reach GitHub to check for updates: " + out[-300:], "error")
+        return redirect(url_for("allowance"))
+    ok, count_out = _run_git(["rev-list", "--count", "HEAD..origin/master"])
+    if not ok:
+        flash("Could not determine update status: " + count_out[-300:], "error")
+        return redirect(url_for("allowance"))
+    n = int(count_out.strip() or "0")
+    if n == 0:
+        flash("Already up to date.", "success")
+    else:
+        _, log = _run_git(["log", "--oneline", "HEAD..origin/master"])
+        titles = log.strip().splitlines()
+        summary = " | ".join(titles[:5])
+        if len(titles) > 5:
+            summary += " | …"
+        flash(f"{n} update{'s' if n != 1 else ''} available: {summary}", "success")
+    return redirect(url_for("allowance"))
+
+
+def _trigger_restart(is_gunicorn):
+    if is_gunicorn:
+        os.kill(os.getppid(), signal.SIGHUP)
+    else:
+        os._exit(3)
+
+
+@app.route("/settings/update/apply", methods=["POST"])
+@login_required
+def apply_update():
+    if APP_VERSION["commit"] is None:
+        flash("Not a git checkout — can't auto-update.", "error")
+        return redirect(url_for("allowance"))
+    ok, out = _run_git(["fetch", "origin", "master"])
+    if not ok:
+        flash("Update failed: could not fetch from GitHub. " + out[-300:], "error")
+        return redirect(url_for("allowance"))
+    ok, out = _run_git(["reset", "--hard", "origin/master"])
+    if not ok:
+        flash("Update failed while resetting to the latest version. " + out[-300:], "error")
+        return redirect(url_for("allowance"))
+    pip_path = os.path.join(os.path.dirname(sys.executable), "pip")
+    try:
+        subprocess.run(
+            [pip_path, "install", "-q", "-r", os.path.join(APP_DIR, "requirements.txt")],
+            timeout=120,
+            check=False,
+        )
+    except (subprocess.SubprocessError, OSError):
+        pass  # non-fatal — the restart below still picks up the new code either way
+    is_gunicorn = "gunicorn" in request.environ.get("SERVER_SOFTWARE", "").lower()
+    flash("Updated — restarting now. Give it a few seconds, then reload.", "success")
+    threading.Timer(1.0, _trigger_restart, args=(is_gunicorn,)).start()
+    return redirect(url_for("allowance"))
 
 
 def _load_secret_key():
