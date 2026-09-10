@@ -330,3 +330,14 @@ input[type="checkbox"] { width: auto; padding: 0; }
 
 .calendar-legend { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 14px; }
 .calendar-legend .cal-tag { display: inline-block; margin-top: 0; }
+
+.stats-bar {
+  background: var(--border);
+  border-radius: 4px;
+  height: 6px;
+  margin-top: 4px;
+  min-width: 60px;
+  overflow: hidden;
+}
+.stats-bar-fill { background: var(--accent); height: 100%; }
+td.negative { color: var(--danger); }

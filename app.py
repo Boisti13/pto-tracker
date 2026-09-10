@@ -1293,6 +1293,70 @@ def set_sick_leave():
     return redirect(url_for("allowance"))
 
 
+def _stats_years():
+    """Every year touched by anything — entries, allowance overrides, or
+    carryover overrides — oldest first, since this is a retrospective view
+    rather than the "jump to today" year-switcher used elsewhere."""
+    db = get_db()
+    years = set()
+    tables = ["pto_entries", "overtime_entries"]
+    if sick_leave_enabled():
+        tables.append("sick_entries")
+    for table in tables:
+        rows = db.execute(f"SELECT strftime('%Y', start_date) AS ys, strftime('%Y', end_date) AS ye FROM {table}").fetchall()
+        for r in rows:
+            if r["ys"]:
+                years.add(int(r["ys"]))
+            if r["ye"]:
+                years.add(int(r["ye"]))
+    for row in db.execute("SELECT year FROM allowances"):
+        years.add(row["year"])
+    for row in db.execute("SELECT year FROM carryover"):
+        years.add(row["year"])
+    years.add(date.today().year)
+    return sorted(years)
+
+
+@app.route("/stats")
+@login_required
+def stats():
+    all_overtime = _overtime_entries_with_hours()
+    include_sick = sick_leave_enabled()
+    rows = []
+    for year in _stats_years():
+        allowance = get_allowance(year)
+        carryover = get_carryover(year)
+        entry_rows = _entries_with_days(year)
+        used = sum(e["days"] for e in entry_rows)
+        taken = sum(e["days"] for e in entry_rows if e["status"] in ("taken", "approved"))
+        planned = used - taken
+
+        year_str = str(year)
+        overtime_hours = sum(
+            e["hours"] for e in all_overtime if e["start_date"][:4] == year_str or e["end_date"][:4] == year_str
+        )
+
+        sick_days = None
+        if include_sick:
+            sick_days = sum(e["days"] for e in _sick_entries_with_days(year))
+
+        rows.append(
+            {
+                "year": year,
+                "allowance": allowance,
+                "carryover": carryover,
+                "used": used,
+                "taken": taken,
+                "planned": planned,
+                "remaining": allowance + carryover - used,
+                "overtime_hhmm": hours_to_hhmm(overtime_hours),
+                "sick_days": sick_days,
+            }
+        )
+    max_used = max((r["used"] for r in rows), default=0)
+    return render_template("stats.html", rows=rows, max_used=max_used)
+
+
 def _shift_month(year, month, delta):
     total = year * 12 + (month - 1) + delta
     return total // 12, total % 12 + 1

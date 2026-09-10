@@ -20,6 +20,7 @@
         {% if calendar_enabled %}
         <a href="{{ url_for('calendar_view') }}">Calendar</a> &middot;
         {% endif %}
+        <a href="{{ url_for('stats') }}">Stats</a> &middot;
         <a href="{{ url_for('allowance') }}">Settings</a> &middot;
         <a href="{{ url_for('logout') }}">Log out</a>
       </nav>

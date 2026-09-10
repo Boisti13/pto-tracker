@@ -34,6 +34,10 @@ system, no database server, no build step — just Python and SQLite.
   (allowance + its own carryover − used) rolls into the next year on its own.
   You can still override it per year (e.g. if your employer caps carryover).
 - **Per-year allowance overrides**, for contract changes etc.
+- **A yearly-overview stats page** — every year with any data (entries or an
+  allowance/carryover override) in one table: allowance, carryover, PTO used
+  (with a quick visual bar), taken/approved vs. still-planned, remaining,
+  overtime hours, and sick days if that's turned on.
 - **Overtime tracking**, on its own tab. Track two independent hour balances
   (e.g. a main account and a second bank like AMA) in H:MM format, set your
   weekly paid hours, and log time off taken against either account. Only

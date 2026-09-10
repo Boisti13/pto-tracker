@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Stats{% endblock %}
+{% block content %}
+
+<div class="card">
+  <h3 style="margin-top:0;">Yearly overview</h3>
+  {% if rows %}
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Year</th>
+          <th>Allowance</th>
+          <th>Carryover</th>
+          <th>PTO used</th>
+          <th>Taken/approved</th>
+          <th>Planned</th>
+          <th>Remaining</th>
+          <th>Overtime</th>
+          {% if sick_leave_enabled %}<th>Sick days</th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td>{{ r.year }}</td>
+          <td>{{ r.allowance | round(1) }}</td>
+          <td>{{ r.carryover | round(1) }}</td>
+          <td>
+            {{ r.used }}
+            <div class="stats-bar"><div class="stats-bar-fill" style="width: {{ (r.used / max_used * 100) if max_used else 0 }}%;"></div></div>
+          </td>
+          <td>{{ r.taken }}</td>
+          <td>{{ r.planned }}</td>
+          <td class="{{ 'negative' if r.remaining < 0 else '' }}">{{ r.remaining | round(1) }}</td>
+          <td>{{ r.overtime_hhmm }}</td>
+          {% if sick_leave_enabled %}<td>{{ r.sick_days if r.sick_days is not none else '—' }}</td>{% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="muted" style="margin-top:12px;">Overtime hours use today's weekly-hours setting for every year shown, since past rates aren't stored separately.</p>
+  {% else %}
+  <p class="muted">No data yet.</p>
+  {% endif %}
+</div>
+
+{% endblock %}
