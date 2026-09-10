@@ -13,12 +13,16 @@ system, no database server, no build step — just Python and SQLite.
 - **Light or dark, your choice.** Follows your browser/OS setting
   automatically by default; override it to always-light or always-dark in
   Settings if you'd rather it not follow the system.
+- **An actual dashboard, separate from PTO management.** `/` is a quick
+  overview — compact PTO/overtime/sick-leave tiles and upcoming holidays —
+  while adding, editing, and browsing PTO entries lives on its own PTO tab,
+  the same way Overtime and Sick Leave already have theirs.
 - **German public holidays, computed automatically.** Pick your federal state
   in Settings (defaults to Rheinland-Pfalz) — weekends and that state's
   holidays are excluded automatically when counting days used, for any year,
   no yearly maintenance.
 - **Planned, approved, or taken.** Every entry has a status. All three count
-  against your balance, and the dashboard breaks out how many of the used
+  against your balance, and the PTO tab breaks out how many of the used
   days are taken-or-approved versus still just planned (approved counts the
   same as taken there — both are committed) — change the status inline as
   plans firm up. Entries can be edited or deleted after the fact, and
@@ -28,7 +32,7 @@ system, no database server, no build step — just Python and SQLite.
   instead of a full one.
 - **Entries spanning New Year's are split automatically**, one part per
   calendar year, so each year's balance only reflects its own days — the
-  dashboard shows a "continues into"/"continued from" note linking the parts,
+  PTO tab shows a "continues into"/"continued from" note linking the parts,
   and editing, deleting, or changing status on either part acts on both.
 - **Automatic carryover.** Whatever's left of one year's balance
   (allowance + its own carryover − used) rolls into the next year on its own.

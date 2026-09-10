@@ -13,6 +13,7 @@
       {% if session.get('logged_in') %}
       <nav>
         <a href="{{ url_for('dashboard') }}">Dashboard</a> &middot;
+        <a href="{{ url_for('pto_entries') }}">PTO</a> &middot;
         <a href="{{ url_for('overtime') }}">Overtime</a> &middot;
         {% if sick_leave_enabled %}
         <a href="{{ url_for('sick_leave') }}">Sick Leave</a> &middot;

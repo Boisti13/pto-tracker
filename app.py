@@ -653,15 +653,10 @@ def logout():
 @login_required
 def dashboard():
     year = int(request.args.get("year", date.today().year))
-    entry_rows = _entries_with_days(year)
-    used = sum(e["days"] for e in entry_rows)
-    # "approved" counts the same as "taken" for this breakdown — both are
-    # committed, only "planned" is still tentative.
-    taken = sum(e["days"] for e in entry_rows if e["status"] in ("taken", "approved"))
-    planned = used - taken
-
     allowance = get_allowance(year)
     carryover = get_carryover(year)
+    used = compute_used(year)
+
     state = get_holiday_state()
     all_holidays = {**state_holidays(date.today().year, state), **extra_holidays_for_years(date.today().year, date.today().year)}
     upcoming_holidays = sorted((d, name) for d, name in all_holidays.items() if d >= date.today())
@@ -677,6 +672,33 @@ def dashboard():
     return render_template(
         "dashboard.html",
         year=year,
+        used=used,
+        remaining=allowance + carryover - used,
+        upcoming_holidays=upcoming_holidays,
+        years=_years_with_data(),
+        holiday_state_name=GERMAN_STATES[state],
+        overtime_balances_hhmm={acc: hours_to_hhmm(v) for acc, v in overtime_balances.items()},
+        overtime_balances_days=overtime_balances_days,
+        sick_used=sick_used,
+    )
+
+
+@app.route("/pto")
+@login_required
+def pto_entries():
+    year = int(request.args.get("year", date.today().year))
+    entry_rows = _entries_with_days(year)
+    used = sum(e["days"] for e in entry_rows)
+    # "approved" counts the same as "taken" for this breakdown — both are
+    # committed, only "planned" is still tentative.
+    taken = sum(e["days"] for e in entry_rows if e["status"] in ("taken", "approved"))
+    planned = used - taken
+    allowance = get_allowance(year)
+    carryover = get_carryover(year)
+
+    return render_template(
+        "pto.html",
+        year=year,
         allowance=allowance,
         carryover=carryover,
         used=used,
@@ -684,13 +706,9 @@ def dashboard():
         planned=planned,
         remaining=allowance + carryover - used,
         entries=entry_rows,
-        upcoming_holidays=upcoming_holidays,
         years=_years_with_data(),
         statuses=ENTRY_STATUSES,
-        holiday_state_name=GERMAN_STATES[state],
-        overtime_balances_hhmm={acc: hours_to_hhmm(v) for acc, v in overtime_balances.items()},
-        overtime_balances_days=overtime_balances_days,
-        sick_used=sick_used,
+        holiday_state_name=GERMAN_STATES[get_holiday_state()],
     )
 
 
@@ -796,7 +814,7 @@ def add_entry():
             else:
                 _insert_pto_entry(start, end, note, status, half_day)
                 get_db().commit()
-                return redirect(url_for("dashboard", year=start.year))
+                return redirect(url_for("pto_entries", year=start.year))
     return render_template(
         "add_entry.html",
         error=error,
@@ -812,7 +830,7 @@ def add_entry():
 def edit_entry(entry_id):
     row, group_rows = _pto_entry_group(entry_id)
     if row is None:
-        return redirect(url_for("dashboard"))
+        return redirect(url_for("pto_entries"))
     group_ids = [r["id"] for r in group_rows]
     is_split = len(group_rows) > 1
     entry = {
@@ -860,7 +878,7 @@ def edit_entry(entry_id):
                 )
                 _insert_pto_entry(start, end, note, status, half_day)
                 db.commit()
-                return redirect(url_for("dashboard", year=start.year))
+                return redirect(url_for("pto_entries", year=start.year))
     return render_template(
         "add_entry.html",
         error=error,
@@ -886,7 +904,7 @@ def update_entry_status(entry_id):
             else:
                 db.execute("UPDATE pto_entries SET status = ? WHERE id = ?", (status, entry_id))
             db.commit()
-    return redirect(url_for("dashboard", year=year))
+    return redirect(url_for("pto_entries", year=year))
 
 
 @app.route("/entries/<int:entry_id>/delete", methods=["POST"])
@@ -901,7 +919,7 @@ def delete_entry(entry_id):
         else:
             db.execute("DELETE FROM pto_entries WHERE id = ?", (entry_id,))
         db.commit()
-    return redirect(url_for("dashboard", year=year))
+    return redirect(url_for("pto_entries", year=year))
 
 
 @app.route("/entries/export.csv")
@@ -1606,7 +1624,7 @@ def allowance():
                 (year, days),
             )
             db.commit()
-            return redirect(url_for("dashboard", year=year))
+            return redirect(url_for("pto_entries", year=year))
     rows = get_db().execute("SELECT * FROM allowances ORDER BY year DESC").fetchall()
     carryover_rows = get_db().execute("SELECT * FROM carryover ORDER BY year DESC").fetchall()
     return render_template(

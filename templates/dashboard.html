@@ -11,28 +11,20 @@
 </div>
 
 <div class="card">
-  <h3 style="margin-top:0;">PTO</h3>
-  <div class="stats">
-    <div class="stat">
-      <div class="value">{{ allowance | round(1) }}</div>
-      <div class="label">Allowance {{ year }}</div>
-    </div>
-    <div class="stat">
-      <div class="value">{{ carryover | round(1) }}</div>
-      <div class="label">Carryover</div>
-    </div>
+  <div class="card-header-row">
+    <h3 style="margin:0;">PTO</h3>
+    <a class="btn secondary" href="{{ url_for('pto_entries', year=year) }}">Details</a>
+  </div>
+  <div class="stats stats-2">
     <div class="stat">
       <div class="value">{{ used }}</div>
-      <div class="label">Used</div>
+      <div class="label">Used {{ year }}</div>
     </div>
     <div class="stat remaining {{ 'negative' if remaining < 0 else '' }}">
       <div class="value">{{ remaining | round(1) }}</div>
       <div class="label">Remaining</div>
     </div>
   </div>
-  <p class="muted" style="text-align:center; margin:16px 0 0;">
-    of the {{ used }} used: <strong>{{ taken }}</strong> actually taken or approved &middot; <strong>{{ planned }}</strong> still just planned
-  </p>
 </div>
 
 <div class="card">
@@ -68,59 +60,6 @@
   </div>
 </div>
 {% endif %}
-
-<div class="card">
-  <div class="card-header-row">
-    <h3 style="margin:0;">PTO entries in {{ year }}</h3>
-    <div style="display:flex; gap:8px; flex-wrap:wrap;">
-      <a class="btn secondary" href="{{ url_for('export_pto_csv') }}">Export CSV</a>
-      <a class="btn" href="{{ url_for('add_entry') }}">+ Add entry</a>
-    </div>
-  </div>
-  {% if entries %}
-  <table class="entries-table">
-    <thead><tr><th>Start</th><th>End</th><th>Days</th><th>Note</th><th>Status</th><th></th></tr></thead>
-    <tbody>
-      {% for e in entries %}
-      <tr>
-        <td data-label="Start">
-          {{ e.start_display }}
-          {% if e.half_day == "start" %}<span class="badge-half">&frac12; day</span>{% endif %}
-          {% if e.continued_from %}<span class="badge-continue">&larr; continued from {{ e.continued_from }}</span>{% endif %}
-        </td>
-        <td data-label="End">
-          {{ e.end_display }}
-          {% if e.half_day == "end" %}<span class="badge-half">&frac12; day</span>{% endif %}
-          {% if e.continues_into %}<span class="badge-continue">&rarr; continues into {{ e.continues_into }}</span>{% endif %}
-        </td>
-        <td data-label="Days">{{ e.days }}</td>
-        <td data-label="Note">{{ e.note or "" }}</td>
-        <td data-label="Status">
-          <form class="inline" method="post" action="{{ url_for('update_entry_status', entry_id=e.id, year=year) }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <select name="status" class="status-select status-{{ e.status }}" onchange="this.form.submit()">
-              {% for s in statuses %}
-              <option value="{{ s }}" {{ "selected" if e.status == s else "" }}>{{ s | capitalize }}</option>
-              {% endfor %}
-            </select>
-          </form>
-        </td>
-        <td class="actions-cell">
-          <a class="btn edit" href="{{ url_for('edit_entry', entry_id=e.id) }}">Edit</a>
-          <form class="inline" method="post" action="{{ url_for('delete_entry', entry_id=e.id, year=year) }}"
-                onsubmit="return confirm('Delete this entry?{{ ' This spans multiple years — both parts will be deleted.' if e.group_id else '' }}');">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button class="btn danger" type="submit">Delete</button>
-          </form>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <p class="muted">No PTO recorded for {{ year }} yet.</p>
-  {% endif %}
-</div>
 
 <div class="card">
   <h3 style="margin-top:0;">Upcoming public holidays ({{ holiday_state_name }})</h3>
