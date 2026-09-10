@@ -165,6 +165,9 @@
     <p style="margin-top:16px;"><button class="btn" type="submit">Save</button></p>
   </form>
   <p class="muted" style="margin-top:4px;">Last backup: {{ backup_last_at_display }}</p>
+  <p class="muted" style="margin-top:2px;">
+    {% if backup_last_auto_display %}Last automatic backup successful on {{ backup_last_auto_display }}{% else %}Last automatic backup: not yet run{% endif %}
+  </p>
   <form method="post" action="{{ url_for('run_backup_now') }}" style="margin-top:8px;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button class="btn secondary" type="submit">Back up now</button>

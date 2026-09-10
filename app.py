@@ -1266,6 +1266,7 @@ def allowance():
         backup_interval_days=get_backup_interval_days(),
         backup_keep_count=get_backup_keep_count(),
         backup_last_at_display=_format_backup_last_at(),
+        backup_last_auto_display=_format_backup_last_auto_at(),
         stored_backups=_list_backups(),
     )
 
@@ -1421,6 +1422,16 @@ def _format_backup_last_at():
         return "never"
 
 
+def _format_backup_last_auto_at():
+    raw = get_setting("backup_last_auto_at", "")
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw).strftime(DISPLAY_DATE_FORMAT)
+    except ValueError:
+        return None
+
+
 def _maybe_run_scheduled_backup():
     """Runs on a background thread in every gunicorn worker — which has no
     Flask request, so get_setting()/get_db() need an app context pushed
@@ -1452,6 +1463,7 @@ def _maybe_run_scheduled_backup():
             return
         _create_backup()
         _prune_backups(get_backup_keep_count())
+        set_setting("backup_last_auto_at", now_str)
 
 
 def _backup_scheduler_loop():
@@ -1487,6 +1499,7 @@ def run_backup_now():
     _create_backup()
     set_setting("backup_last_at", datetime.now(timezone.utc).isoformat())
     _prune_backups(get_backup_keep_count())
+    flash("Backup created.", "success")
     return redirect(url_for("allowance"))
 
 
