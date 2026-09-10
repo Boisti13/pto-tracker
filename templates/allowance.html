@@ -15,6 +15,19 @@
 </div>
 
 <div class="card">
+  <h2>Sick leave tracking</h2>
+  <p class="muted">Optional log of sick days (Krankheitstage), kept separate from your PTO balance &mdash; it's just a record, it doesn't count against your allowance.</p>
+  <form method="post" action="{{ url_for('set_sick_leave') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="checkbox-row">
+      <input type="checkbox" name="sick_leave" value="1" onchange="this.form.submit()"
+             {{ "checked" if sick_leave_enabled else "" }}>
+      <span>Enable sick leave tracking</span>
+    </label>
+  </form>
+</div>
+
+<div class="card">
   <h2>Calendar feed (.ics)</h2>
   <p class="muted">Get a subscribable calendar URL for your PTO and overtime time off, to add to your phone or desktop calendar app. Anyone with this URL can see your time off dates, so keep it private and regenerate it if it ever leaks.</p>
   <form method="post" action="{{ url_for('set_ics_feed') }}">

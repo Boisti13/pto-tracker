@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit sick leave entry' if entry else 'Add sick leave' }}{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>{{ 'Edit sick leave entry' if entry else 'Add sick leave entry' }}</h2>
+  {% if error %}<div class="error">{{ error }}</div>{% endif %}
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label for="start_date">Start date</label>
+    <input id="start_date" name="start_date" type="date" value="{{ entry.start_date if entry else today }}" required>
+    <label for="end_date">End date</label>
+    <input id="end_date" name="end_date" type="date" value="{{ entry.end_date if entry else today }}" required>
+    <label for="note">Note (optional)</label>
+    <input id="note" name="note" placeholder="e.g. flu" value="{{ entry.note if entry else '' }}">
+    <label for="half_day">Half day</label>
+    <select id="half_day" name="half_day">
+      <option value="" {{ "selected" if not (entry and entry.half_day) else "" }}>No &mdash; full day(s)</option>
+      <option value="start" {{ "selected" if (entry and entry.half_day == "start") else "" }}>Yes &mdash; first day is a half day</option>
+      <option value="end" {{ "selected" if (entry and entry.half_day == "end") else "" }}>Yes &mdash; last day is a half day</option>
+    </select>
+    <p class="muted" style="margin-top:10px;">Weekends and {{ holiday_state_name }} public holidays are excluded automatically. This is a record only — it doesn't count against your PTO balance.</p>
+    <p class="muted" style="margin-top:6px;">An entry spanning New Year's is automatically split into one part per year (e.g. 21 Dec &ndash; 10 Jan becomes two linked entries).{% if is_split %} This entry is already split &mdash; editing it here edits the whole date range and re-splits it on save.{% endif %}</p>
+    <p style="margin-top:16px;">
+      <button class="btn" type="submit">{{ 'Save changes' if entry else 'Save' }}</button>
+      <a class="btn secondary" href="{{ url_for('sick_leave') }}">Cancel</a>
+    </p>
+  </form>
+</div>
+{% endblock %}

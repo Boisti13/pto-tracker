@@ -95,6 +95,15 @@ def init_db():
             status TEXT NOT NULL DEFAULT 'planned',
             created_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS sick_entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            start_date TEXT NOT NULL,
+            end_date TEXT NOT NULL,
+            note TEXT,
+            half_day TEXT,
+            group_id TEXT,
+            created_at TEXT NOT NULL
+        );
         """
     )
     columns = {row[1] for row in db.execute("PRAGMA table_info(pto_entries)")}
@@ -156,6 +165,10 @@ def calendar_view_enabled():
     return get_setting("calendar_view_enabled", "0") == "1"
 
 
+def sick_leave_enabled():
+    return get_setting("sick_leave_enabled", "0") == "1"
+
+
 def ics_feed_enabled():
     return get_setting("ics_feed_enabled", "0") == "1"
 
@@ -169,10 +182,10 @@ def get_ics_token():
 
 
 @app.context_processor
-def inject_calendar_nav_flag():
+def inject_nav_flags():
     if not session.get("logged_in"):
         return {}
-    return {"calendar_enabled": calendar_view_enabled()}
+    return {"calendar_enabled": calendar_view_enabled(), "sick_leave_enabled": sick_leave_enabled()}
 
 
 EXTRA_HOLIDAYS = [("dec24", "Heiligabend", 12, 24), ("dec31", "Silvester", 12, 31)]
@@ -282,15 +295,27 @@ def _overtime_overlaps(start_date, end_date, exclude_ids=None):
     return get_db().execute(query, params).fetchone() is not None
 
 
-def _overlap_kind(start_date, end_date, exclude_pto_ids=None, exclude_overtime_ids=None):
-    """Whether [start_date, end_date] overlaps an existing entry in either table.
-    Returns "PTO", "overtime", or None. A day off is a day off regardless of
-    which balance it draws from, so both tables are checked either way.
+def _sick_overlaps(start_date, end_date, exclude_ids=None):
+    query = "SELECT 1 FROM sick_entries WHERE start_date <= ? AND end_date >= ?"
+    params = [end_date, start_date]
+    if exclude_ids:
+        query += f" AND id NOT IN ({','.join('?' * len(exclude_ids))})"
+        params.extend(exclude_ids)
+    return get_db().execute(query, params).fetchone() is not None
+
+
+def _overlap_kind(start_date, end_date, exclude_pto_ids=None, exclude_overtime_ids=None, exclude_sick_ids=None):
+    """Whether [start_date, end_date] overlaps an existing entry in any of the
+    three tables. Returns "PTO", "overtime", "sick leave", or None. A day off
+    is a day off regardless of which balance (if any) it draws from, so all
+    three are checked either way.
     """
     if _pto_overlaps(start_date, end_date, exclude_ids=exclude_pto_ids):
         return "PTO"
     if _overtime_overlaps(start_date, end_date, exclude_ids=exclude_overtime_ids):
         return "overtime"
+    if _sick_overlaps(start_date, end_date, exclude_ids=exclude_sick_ids):
+        return "sick leave"
     return None
 
 
@@ -318,6 +343,14 @@ def _overtime_group_bounds():
     return {r["group_id"]: (r["gmin"], r["gmax"]) for r in rows}
 
 
+def _sick_group_bounds():
+    rows = get_db().execute(
+        "SELECT group_id, MIN(start_date) AS gmin, MAX(end_date) AS gmax FROM sick_entries "
+        "WHERE group_id IS NOT NULL GROUP BY group_id"
+    ).fetchall()
+    return {r["group_id"]: (r["gmin"], r["gmax"]) for r in rows}
+
+
 def _pto_entry_group(entry_id):
     db = get_db()
     row = db.execute("SELECT * FROM pto_entries WHERE id = ?", (entry_id,)).fetchone()
@@ -339,6 +372,19 @@ def _overtime_entry_group(entry_id):
     if row["group_id"]:
         group_rows = db.execute(
             "SELECT * FROM overtime_entries WHERE group_id = ? ORDER BY start_date", (row["group_id"],)
+        ).fetchall()
+        return row, group_rows
+    return row, [row]
+
+
+def _sick_entry_group(entry_id):
+    db = get_db()
+    row = db.execute("SELECT * FROM sick_entries WHERE id = ?", (entry_id,)).fetchone()
+    if row is None:
+        return None, []
+    if row["group_id"]:
+        group_rows = db.execute(
+            "SELECT * FROM sick_entries WHERE group_id = ? ORDER BY start_date", (row["group_id"],)
         ).fetchall()
         return row, group_rows
     return row, [row]
@@ -392,6 +438,26 @@ def _insert_overtime_entry(start, end, note, account, status, half_day=None):
                 note,
                 account,
                 status,
+                created_at,
+                group_id,
+                _segment_half_day(seg_start, seg_end, start, end, half_day),
+            ),
+        )
+
+
+def _insert_sick_entry(start, end, note, half_day=None):
+    db = get_db()
+    segments = _year_segments(start, end)
+    group_id = uuid.uuid4().hex if len(segments) > 1 else None
+    created_at = datetime.now(timezone.utc).isoformat()
+    for seg_start, seg_end in segments:
+        db.execute(
+            "INSERT INTO sick_entries (start_date, end_date, note, created_at, group_id, half_day) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                seg_start.isoformat(),
+                seg_end.isoformat(),
+                note,
                 created_at,
                 group_id,
                 _segment_half_day(seg_start, seg_end, start, end, half_day),
@@ -597,6 +663,10 @@ def dashboard():
     daily = get_daily_hours()
     overtime_balances_days = {acc: (round(v / daily, 1) if daily else None) for acc, v in overtime_balances.items()}
 
+    sick_used = None
+    if sick_leave_enabled():
+        sick_used = sum(e["days"] for e in _sick_entries_with_days(year))
+
     return render_template(
         "dashboard.html",
         year=year,
@@ -613,12 +683,71 @@ def dashboard():
         holiday_state_name=GERMAN_STATES[state],
         overtime_balances_hhmm={acc: hours_to_hhmm(v) for acc, v in overtime_balances.items()},
         overtime_balances_days=overtime_balances_days,
+        sick_used=sick_used,
     )
 
 
 def _years_with_data():
     rows = get_db().execute(
         "SELECT strftime('%Y', start_date) AS ys, strftime('%Y', end_date) AS ye FROM pto_entries"
+    ).fetchall()
+    years = set()
+    for r in rows:
+        if r["ys"]:
+            years.add(int(r["ys"]))
+        if r["ye"]:
+            years.add(int(r["ye"]))
+    years.add(date.today().year)
+    current = date.today().year
+    rest = sorted(y for y in years if y != current)
+    return [current] + rest
+
+
+def _sick_entries_with_days(year):
+    state = get_holiday_state()
+    extra = extra_holidays_for_years(year, year)
+    group_bounds = _sick_group_bounds()
+    entries = get_db().execute(
+        "SELECT * FROM sick_entries "
+        "WHERE strftime('%Y', start_date) = ? OR strftime('%Y', end_date) = ? "
+        "ORDER BY start_date ASC",
+        (str(year), str(year)),
+    ).fetchall()
+    result = []
+    for e in entries:
+        start = datetime.strptime(e["start_date"], "%Y-%m-%d").date()
+        end = datetime.strptime(e["end_date"], "%Y-%m-%d").date()
+        clipped_start = max(start, date(year, 1, 1))
+        clipped_end = min(end, date(year, 12, 31))
+        days = count_pto_days(clipped_start, clipped_end, state, extra)
+        discount = _half_day_discount(e["half_day"], clipped_start, clipped_end, state, extra)
+        if discount:
+            days -= discount
+        continues_into = None
+        continued_from = None
+        bounds = group_bounds.get(e["group_id"])
+        if bounds:
+            gmin, gmax = bounds
+            if e["end_date"] != gmax:
+                continues_into = end.year + 1
+            if e["start_date"] != gmin:
+                continued_from = start.year - 1
+        result.append(
+            {
+                **dict(e),
+                "days": days,
+                "start_display": start.strftime(DISPLAY_DATE_FORMAT),
+                "end_display": end.strftime(DISPLAY_DATE_FORMAT),
+                "continues_into": continues_into,
+                "continued_from": continued_from,
+            }
+        )
+    return result
+
+
+def _sick_years_with_data():
+    rows = get_db().execute(
+        "SELECT strftime('%Y', start_date) AS ys, strftime('%Y', end_date) AS ye FROM sick_entries"
     ).fetchall()
     years = set()
     for r in rows:
@@ -1011,6 +1140,152 @@ def export_overtime_csv():
     )
 
 
+@app.route("/sick")
+@login_required
+def sick_leave():
+    if not sick_leave_enabled():
+        return redirect(url_for("dashboard"))
+    year = int(request.args.get("year", date.today().year))
+    entry_rows = _sick_entries_with_days(year)
+    used = sum(e["days"] for e in entry_rows)
+    return render_template(
+        "sick.html",
+        year=year,
+        used=used,
+        entries=entry_rows,
+        years=_sick_years_with_data(),
+        holiday_state_name=GERMAN_STATES[get_holiday_state()],
+    )
+
+
+@app.route("/sick/entries/add", methods=["GET", "POST"])
+@login_required
+def add_sick_entry():
+    error = None
+    if request.method == "POST":
+        start_date = request.form.get("start_date", "")
+        end_date = request.form.get("end_date", "")
+        note = request.form.get("note", "").strip()
+        half_day = request.form.get("half_day") or None
+        if half_day not in HALF_DAY_OPTIONS:
+            half_day = None
+        try:
+            start = datetime.strptime(start_date, "%Y-%m-%d").date()
+            end = datetime.strptime(end_date, "%Y-%m-%d").date()
+        except ValueError:
+            error = "Please provide valid dates."
+        else:
+            overlap = _overlap_kind(start_date, end_date)
+            if end < start:
+                error = "End date must be on or after the start date."
+            elif overlap:
+                error = f"This overlaps an existing {overlap} entry."
+            else:
+                _insert_sick_entry(start, end, note, half_day)
+                get_db().commit()
+                return redirect(url_for("sick_leave", year=start.year))
+    return render_template(
+        "sick_add_entry.html",
+        error=error,
+        entry=None,
+        today=date.today().isoformat(),
+        holiday_state_name=GERMAN_STATES[get_holiday_state()],
+    )
+
+
+@app.route("/sick/entries/<int:entry_id>/edit", methods=["GET", "POST"])
+@login_required
+def edit_sick_entry(entry_id):
+    row, group_rows = _sick_entry_group(entry_id)
+    if row is None:
+        return redirect(url_for("sick_leave"))
+    group_ids = [r["id"] for r in group_rows]
+    is_split = len(group_rows) > 1
+    entry = {
+        "id": entry_id,
+        "start_date": group_rows[0]["start_date"],
+        "end_date": group_rows[-1]["end_date"],
+        "note": row["note"],
+        "half_day": group_rows[0]["half_day"] or group_rows[-1]["half_day"],
+    }
+    error = None
+    if request.method == "POST":
+        start_date = request.form.get("start_date", "")
+        end_date = request.form.get("end_date", "")
+        note = request.form.get("note", "").strip()
+        half_day = request.form.get("half_day") or None
+        if half_day not in HALF_DAY_OPTIONS:
+            half_day = None
+        entry = {"id": entry_id, "start_date": start_date, "end_date": end_date, "note": note, "half_day": half_day}
+        try:
+            start = datetime.strptime(start_date, "%Y-%m-%d").date()
+            end = datetime.strptime(end_date, "%Y-%m-%d").date()
+        except ValueError:
+            error = "Please provide valid dates."
+        else:
+            overlap = _overlap_kind(start_date, end_date, exclude_sick_ids=group_ids)
+            if end < start:
+                error = "End date must be on or after the start date."
+            elif overlap:
+                error = f"This overlaps an existing {overlap} entry."
+            else:
+                db = get_db()
+                db.execute(
+                    f"DELETE FROM sick_entries WHERE id IN ({','.join('?' * len(group_ids))})", group_ids
+                )
+                _insert_sick_entry(start, end, note, half_day)
+                db.commit()
+                return redirect(url_for("sick_leave", year=start.year))
+    return render_template(
+        "sick_add_entry.html",
+        error=error,
+        entry=entry,
+        is_split=is_split,
+        today=date.today().isoformat(),
+        holiday_state_name=GERMAN_STATES[get_holiday_state()],
+    )
+
+
+@app.route("/sick/entries/<int:entry_id>/delete", methods=["POST"])
+@login_required
+def delete_sick_entry(entry_id):
+    year = request.args.get("year", date.today().year)
+    db = get_db()
+    row = db.execute("SELECT group_id FROM sick_entries WHERE id = ?", (entry_id,)).fetchone()
+    if row:
+        if row["group_id"]:
+            db.execute("DELETE FROM sick_entries WHERE group_id = ?", (row["group_id"],))
+        else:
+            db.execute("DELETE FROM sick_entries WHERE id = ?", (entry_id,))
+        db.commit()
+    return redirect(url_for("sick_leave", year=year))
+
+
+@app.route("/sick/entries/export.csv")
+@login_required
+def export_sick_csv():
+    entries = get_db().execute(
+        "SELECT start_date, end_date, note, half_day FROM sick_entries ORDER BY start_date"
+    ).fetchall()
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["start_date", "end_date", "note", "half_day"])
+    for e in entries:
+        writer.writerow([e["start_date"], e["end_date"], e["note"] or "", e["half_day"] or ""])
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=sick_entries.csv"},
+    )
+
+
+@app.route("/settings/sick-leave", methods=["POST"])
+@login_required
+def set_sick_leave():
+    set_setting("sick_leave_enabled", "1" if request.form.get("sick_leave") == "1" else "0")
+    return redirect(url_for("allowance"))
+
+
 def _shift_month(year, month, delta):
     total = year * 12 + (month - 1) + delta
     return total // 12, total % 12 + 1
@@ -1025,8 +1300,11 @@ def _calendar_month(year, month):
 
     entries_by_day = {}
     db = get_db()
-    group_bounds = {"pto": _pto_group_bounds(), "overtime": _overtime_group_bounds()}
-    for table, kind in (("pto_entries", "pto"), ("overtime_entries", "overtime")):
+    group_bounds = {"pto": _pto_group_bounds(), "overtime": _overtime_group_bounds(), "sick": _sick_group_bounds()}
+    sources = [("pto_entries", "pto"), ("overtime_entries", "overtime")]
+    if sick_leave_enabled():
+        sources.append(("sick_entries", "sick"))
+    for table, kind in sources:
         rows = db.execute(
             f"SELECT * FROM {table} WHERE start_date <= ? AND end_date >= ?",
             (month_end.isoformat(), month_start.isoformat()),
@@ -1040,15 +1318,20 @@ def _calendar_month(year, month):
             bounds = group_bounds[kind].get(r["group_id"])
             true_start = datetime.strptime(bounds[0], "%Y-%m-%d").date() if bounds else rstart
             true_end = datetime.strptime(bounds[1], "%Y-%m-%d").date() if bounds else rend
+            if kind == "pto":
+                tag_class = f"tag-{r['status']}"
+            elif kind == "overtime":
+                tag_class = "tag-overtime"
+            else:
+                tag_class = "tag-sick"
             d = max(rstart, month_start)
             while d <= min(rend, month_end):
                 half = (r["half_day"] == "start" and d == rstart) or (r["half_day"] == "end" and d == rend)
                 entries_by_day[d] = {
                     "kind": kind,
-                    "status": r["status"],
                     "note": r["note"],
                     "half": half,
-                    "account": r["account"] if kind == "overtime" else None,
+                    "tag_class": tag_class,
                     # flags whether the entry actually runs past this rendered month's
                     # edge, so a one-month-at-a-time view doesn't hide the rest of it
                     "continued_before": d == month_start and true_start < month_start,
@@ -1158,8 +1441,10 @@ def _ics_entries(table, kind):
         start = datetime.strptime(first["start_date"], "%Y-%m-%d").date()
         end = datetime.strptime(last["end_date"], "%Y-%m-%d").date()
         half = first["half_day"] == "start" or last["half_day"] == "end"
-        title = first["note"] or ("PTO" if kind == "pto" else "Time off")
-        title = f"{title} ({first['status']})"
+        default_title = {"pto": "PTO", "overtime": "Time off", "sick": "Sick leave"}[kind]
+        title = first["note"] or default_title
+        if kind != "sick":
+            title = f"{title} ({first['status']})"
         if kind == "overtime":
             title += f" — {OVERTIME_ACCOUNTS.get(first['account'], first['account'])}"
         if half:
@@ -1177,7 +1462,11 @@ def _ics_entries(table, kind):
 
 
 def _build_ics_feed():
-    events = _ics_entries("pto_entries", "pto") + _ics_entries("overtime_entries", "overtime")
+    events = (
+        _ics_entries("pto_entries", "pto")
+        + _ics_entries("overtime_entries", "overtime")
+        + _ics_entries("sick_entries", "sick")
+    )
     now = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     lines = [
         "BEGIN:VCALENDAR",

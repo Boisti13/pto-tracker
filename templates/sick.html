@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Sick Leave{% endblock %}
+{% block content %}
+
+<div class="year-switch">
+  {% for y in years %}
+    <a href="{{ url_for('sick_leave', year=y) }}" class="{{ 'active' if y == year else '' }}">{{ y }}</a>
+  {% endfor %}
+  <a href="{{ url_for('sick_leave', year=year - 1) }}">&laquo;</a>
+  <a href="{{ url_for('sick_leave', year=year + 1) }}">&raquo;</a>
+</div>
+
+<div class="card">
+  <h3 style="margin-top:0;">Sick Leave</h3>
+  <div class="stats stats-1">
+    <div class="stat">
+      <div class="value">{{ used }}</div>
+      <div class="label">Sick days in {{ year }}</div>
+    </div>
+  </div>
+  <p class="muted" style="text-align:center; margin:16px 0 0;">Doesn't count against your PTO balance &mdash; this is just a record.</p>
+</div>
+
+<div class="card">
+  <div class="card-header-row">
+    <h3 style="margin:0;">Sick leave entries in {{ year }}</h3>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <a class="btn secondary" href="{{ url_for('export_sick_csv') }}">Export CSV</a>
+      <a class="btn" href="{{ url_for('add_sick_entry') }}">+ Add entry</a>
+    </div>
+  </div>
+  {% if entries %}
+  <table class="entries-table">
+    <thead><tr><th>Start</th><th>End</th><th>Days</th><th>Note</th><th></th></tr></thead>
+    <tbody>
+      {% for e in entries %}
+      <tr>
+        <td data-label="Start">
+          {{ e.start_display }}
+          {% if e.half_day == "start" %}<span class="badge-half">&frac12; day</span>{% endif %}
+          {% if e.continued_from %}<span class="badge-continue">&larr; continued from {{ e.continued_from }}</span>{% endif %}
+        </td>
+        <td data-label="End">
+          {{ e.end_display }}
+          {% if e.half_day == "end" %}<span class="badge-half">&frac12; day</span>{% endif %}
+          {% if e.continues_into %}<span class="badge-continue">&rarr; continues into {{ e.continues_into }}</span>{% endif %}
+        </td>
+        <td data-label="Days">{{ e.days }}</td>
+        <td data-label="Note">{{ e.note or "" }}</td>
+        <td class="actions-cell">
+          <a class="btn edit" href="{{ url_for('edit_sick_entry', entry_id=e.id) }}">Edit</a>
+          <form class="inline" method="post" action="{{ url_for('delete_sick_entry', entry_id=e.id, year=year) }}"
+                onsubmit="return confirm('Delete this entry?{{ ' This spans multiple years — both parts will be deleted.' if e.group_id else '' }}');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn danger" type="submit">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No sick leave recorded for {{ year }} yet.</p>
+  {% endif %}
+</div>
+
+{% endblock %}

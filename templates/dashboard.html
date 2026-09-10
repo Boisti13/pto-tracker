@@ -54,6 +54,21 @@
   </div>
 </div>
 
+{% if sick_leave_enabled %}
+<div class="card">
+  <div class="card-header-row">
+    <h3 style="margin:0;">Sick Leave</h3>
+    <a class="btn secondary" href="{{ url_for('sick_leave', year=year) }}">Details</a>
+  </div>
+  <div class="stats stats-1">
+    <div class="stat">
+      <div class="value">{{ sick_used }}</div>
+      <div class="label">Sick days in {{ year }}</div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <div class="card">
   <div class="card-header-row">
     <h3 style="margin:0;">PTO entries in {{ year }}</h3>

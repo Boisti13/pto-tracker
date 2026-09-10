@@ -37,27 +37,34 @@ system, no database server, no build step — just Python and SQLite.
   entries not yet marked "taken" count against the balance shown, so you can
   freely re-sync the balance from your employer's system without
   double-counting anything already reflected in it.
+- **Optional sick-leave tracking.** Turn it on in Settings to get a third,
+  separate log for sick days (Krankheitstage), on its own tab. Same
+  half-day and New-Year's-split handling as PTO, but no status and no
+  balance math — it's a record, not something that counts against your
+  allowance. A day can only belong to one of PTO/overtime/sick leave at a
+  time; overlapping any of the three against another is rejected.
 - **Optional calendar view.** Turn it on in Settings to get a calendar grid
-  alongside the list view, with PTO, overtime, and public holidays all marked
-  on it. It automatically shows as many months as needed (up to 6) so a
-  vacation spanning multiple months — or across New Year's — is always
-  visible in full, no manual range-picking required; an arrow on the edge
-  day marks the rare case where it still runs past that.
+  alongside the list view, with PTO, overtime, sick leave, and public
+  holidays all marked on it. It automatically shows as many months as
+  needed (up to 6) so a vacation spanning multiple months — or across New
+  Year's — is always visible in full, no manual range-picking required; an
+  arrow on the edge day marks the rare case where it still runs past that.
 - **Optional calendar feed (.ics).** Turn it on in Settings to get a
-  subscribable URL for your PTO and overtime time off, so it shows up
-  in your phone or desktop calendar app. Gated by a random token in the
-  URL rather than a login (calendar apps can't do interactive auth), with
-  a "Regenerate link" button if it ever needs to be invalidated. The app
-  itself stays LAN-only as before — reaching this feed from outside your
-  network is a networking choice you make separately (e.g. a tunnel scoped
-  to just this one path), not something the app does for you.
+  subscribable URL for your PTO, overtime, and sick-leave time off, so it
+  shows up in your phone or desktop calendar app. Gated by a random token
+  in the URL rather than a login (calendar apps can't do interactive
+  auth), with a "Regenerate link" button if it ever needs to be
+  invalidated. The app itself stays LAN-only as before — reaching this
+  feed from outside your network is a networking choice you make
+  separately (e.g. a tunnel scoped to just this one path), not something
+  the app does for you.
 - **Optional automatic backups.** Turn it on in Settings to keep a rolling
   set of snapshots on disk — pick how often (every N days) and how many to
   keep. Runs in the background regardless of whether you have the app open,
   with a "Back up now" button for an on-demand one and a list of stored
   backups to download or delete. On top of (not instead of) the manual
   "Download backup" button, which still works the same as always.
-- **CSV export** for both PTO and overtime entries.
+- **CSV export** for PTO, overtime, and sick-leave entries.
 - Mobile-friendly — usable on a phone down to a 320px-wide screen.
 - No JavaScript framework, no external CDN dependency — works entirely on
   your own network.

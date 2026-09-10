@@ -28,7 +28,7 @@
             <span class="cal-daynum">{{ day.day }}</span>
             {% if day.holiday %}<span class="cal-tag tag-holiday">{{ day.holiday }}</span>{% endif %}
             {% if day.entry %}
-            <span class="cal-tag {{ 'tag-overtime' if day.entry.kind == 'overtime' else 'tag-' + day.entry.status }}">
+            <span class="cal-tag {{ day.entry.tag_class }}">
               {% if day.entry.continued_before %}&larr; {% endif %}{{ day.entry.note or (day.entry.kind | capitalize) }}{% if day.entry.half %} &frac12;{% endif %}{% if day.entry.continues_after %} &rarr;{% endif %}
             </span>
             {% endif %}
@@ -49,6 +49,7 @@
     <span class="cal-tag tag-approved">approved</span>
     <span class="cal-tag tag-taken">taken</span>
     <span class="cal-tag tag-overtime">overtime</span>
+    {% if sick_leave_enabled %}<span class="cal-tag tag-sick">sick leave</span>{% endif %}
     <span class="cal-tag tag-holiday">{{ holiday_state_name }} holiday</span>
     <span class="muted" style="font-size:0.72rem;">&larr;/&rarr; = continues beyond this month</span>
   </p>
