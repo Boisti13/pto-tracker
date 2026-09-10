@@ -969,6 +969,91 @@ def export_pto_csv():
     )
 
 
+CSV_IMPORT_ROW_LIMIT = 2000
+
+
+def _import_csv_entries(kind):
+    """Shared body for the three CSV importers (kind: 'pto'/'overtime'/'sick') —
+    same column format each export already produces. Best-effort: a bad row is
+    skipped and reported rather than failing the whole import, since the usual
+    case is backfilling messy historical data where a few rows won't parse."""
+    file = request.files.get("csv_file")
+    if not file or not file.filename:
+        return 0, ["Please choose a CSV file to import."]
+    try:
+        text = file.read().decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return 0, ["Could not read that file as UTF-8 text."]
+    try:
+        rows = list(csv.DictReader(io.StringIO(text)))
+    except csv.Error:
+        return 0, ["Could not parse that file as CSV."]
+    if len(rows) > CSV_IMPORT_ROW_LIMIT:
+        return 0, [f"That file has too many rows (max {CSV_IMPORT_ROW_LIMIT} per import)."]
+
+    imported = 0
+    errors = []
+    for i, row in enumerate(rows, start=2):  # row 1 is the header
+        start_date = (row.get("start_date") or "").strip()
+        end_date = (row.get("end_date") or "").strip()
+        note = (row.get("note") or "").strip()
+        try:
+            start = datetime.strptime(start_date, "%Y-%m-%d").date()
+            end = datetime.strptime(end_date, "%Y-%m-%d").date()
+        except ValueError:
+            errors.append(f"Row {i}: invalid or missing date(s) (need YYYY-MM-DD).")
+            continue
+        if end < start:
+            errors.append(f"Row {i}: end date is before start date.")
+            continue
+        half_day = (row.get("half_day") or "").strip().lower()
+        if half_day not in HALF_DAY_OPTIONS:
+            half_day = None
+        overlap = _overlap_kind(start_date, end_date)
+        if overlap:
+            errors.append(f"Row {i} ({start_date}–{end_date}): overlaps an existing {overlap} entry.")
+            continue
+        if kind == "pto":
+            status = (row.get("status") or "planned").strip().lower()
+            if status not in ENTRY_STATUSES:
+                status = "planned"
+            _insert_pto_entry(start, end, note, status, half_day)
+        elif kind == "overtime":
+            status = (row.get("status") or "planned").strip().lower()
+            if status not in ENTRY_STATUSES:
+                status = "planned"
+            account = (row.get("account") or "main").strip().lower()
+            if account not in OVERTIME_ACCOUNTS:
+                account = "main"
+            _insert_overtime_entry(start, end, note, account, status, half_day)
+        else:
+            _insert_sick_entry(start, end, note, half_day)
+        imported += 1
+    get_db().commit()
+    return imported, errors
+
+
+def _flash_import_result(imported, errors):
+    if imported:
+        flash(f"Imported {imported} entr{'y' if imported == 1 else 'ies'}.", "success")
+    shown = errors[:10]
+    if shown:
+        msg = f"Skipped {len(errors)} row(s): " + " ".join(shown)
+        if len(errors) > 10:
+            msg += " …"
+        flash(msg, "error")
+    elif not imported:
+        flash("No rows found in that file.", "error")
+
+
+@app.route("/entries/import", methods=["POST"])
+@login_required
+def import_pto_csv():
+    imported, errors = _import_csv_entries("pto")
+    _flash_import_result(imported, errors)
+    return redirect(url_for("pto_entries"))
+
+
 @app.route("/overtime", methods=["GET", "POST"])
 @login_required
 def overtime():
@@ -1194,6 +1279,14 @@ def export_overtime_csv():
     )
 
 
+@app.route("/overtime/entries/import", methods=["POST"])
+@login_required
+def import_overtime_csv():
+    imported, errors = _import_csv_entries("overtime")
+    _flash_import_result(imported, errors)
+    return redirect(url_for("overtime"))
+
+
 @app.route("/sick")
 @login_required
 def sick_leave():
@@ -1331,6 +1424,16 @@ def export_sick_csv():
         mimetype="text/csv",
         headers={"Content-Disposition": "attachment; filename=sick_entries.csv"},
     )
+
+
+@app.route("/sick/entries/import", methods=["POST"])
+@login_required
+def import_sick_csv():
+    if not sick_leave_enabled():
+        return redirect(url_for("dashboard"))
+    imported, errors = _import_csv_entries("sick")
+    _flash_import_result(imported, errors)
+    return redirect(url_for("sick_leave"))
 
 
 @app.route("/settings/sick-leave", methods=["POST"])

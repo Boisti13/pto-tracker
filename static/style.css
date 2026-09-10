@@ -81,6 +81,15 @@ header.topbar {
   margin-bottom: 12px;
 }
 
+.import-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.import-row input[type="file"] { width: auto; padding: 4px; }
+
 header.topbar h1 {
   font-size: 1.25rem;
   margin: 0;

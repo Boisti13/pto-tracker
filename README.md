@@ -77,7 +77,12 @@ system, no database server, no build step — just Python and SQLite.
   with a "Back up now" button for an on-demand one and a list of stored
   backups to download or delete. On top of (not instead of) the manual
   "Download backup" button, which still works the same as always.
-- **CSV export** for PTO, overtime, and sick-leave entries.
+- **CSV export and import** for PTO, overtime, and sick-leave entries, each
+  on its own tab — import uses the exact same columns the export produces,
+  so round-tripping or backfilling from a spreadsheet just works. It's
+  best-effort: a bad row (unparseable dates, an overlap with something
+  already there or with an earlier row in the same file) is skipped and
+  reported rather than failing the whole import.
 - Mobile-friendly — usable on a phone down to a 320px-wide screen.
 - No JavaScript framework, no external CDN dependency — works entirely on
   your own network.

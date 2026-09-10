@@ -29,6 +29,12 @@
       <a class="btn" href="{{ url_for('add_sick_entry') }}">+ Add entry</a>
     </div>
   </div>
+  <form method="post" action="{{ url_for('import_sick_csv') }}" enctype="multipart/form-data" class="import-row">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="file" name="csv_file" accept=".csv" required>
+    <button class="btn secondary" type="submit">Import CSV</button>
+    <span class="muted">Columns: start_date, end_date (YYYY-MM-DD), note, half_day &mdash; same as Export CSV.</span>
+  </form>
   {% if entries %}
   <table class="entries-table">
     <thead><tr><th>Start</th><th>End</th><th>Days</th><th>Note</th><th></th></tr></thead>

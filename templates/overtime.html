@@ -61,6 +61,12 @@
       <a class="btn" href="{{ url_for('add_overtime_entry') }}">+ Add entry</a>
     </div>
   </div>
+  <form method="post" action="{{ url_for('import_overtime_csv') }}" enctype="multipart/form-data" class="import-row">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="file" name="csv_file" accept=".csv" required>
+    <button class="btn secondary" type="submit">Import CSV</button>
+    <span class="muted">Columns: start_date, end_date (YYYY-MM-DD), note, account, status, half_day &mdash; same as Export CSV.</span>
+  </form>
   <div class="year-switch">
     <a href="{{ url_for('overtime') }}" class="{{ 'active' if not year_filter else '' }}">All</a>
     {% for y in years %}
