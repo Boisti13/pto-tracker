@@ -25,6 +25,11 @@
       <div class="label">Remaining</div>
     </div>
   </div>
+  {% if next_pto %}
+  <p class="muted" style="text-align:center; margin:12px 0 0;">
+    Next: <strong>{{ next_pto.start_display }}{% if not next_pto.single_day %} &ndash; {{ next_pto.end_display }}{% endif %}</strong>{% if next_pto.note %} &middot; {{ next_pto.note }}{% endif %} ({{ next_pto.status }})
+  </p>
+  {% endif %}
 </div>
 
 <div class="card">
@@ -44,6 +49,11 @@
       {% if overtime_balances_days.ama is not none %}<div class="days-note">&asymp; {{ overtime_balances_days.ama }} days off</div>{% endif %}
     </div>
   </div>
+  {% if next_overtime %}
+  <p class="muted" style="text-align:center; margin:12px 0 0;">
+    Next: <strong>{{ next_overtime.start_display }}{% if not next_overtime.single_day %} &ndash; {{ next_overtime.end_display }}{% endif %}</strong>{% if next_overtime.note %} &middot; {{ next_overtime.note }}{% endif %} ({{ next_overtime.status }})
+  </p>
+  {% endif %}
 </div>
 
 {% if sick_leave_enabled %}

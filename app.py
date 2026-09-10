@@ -649,6 +649,30 @@ def logout():
     return redirect(url_for("login"))
 
 
+def _next_upcoming_entry(table, group_bounds):
+    """The soonest not-yet-taken entry that hasn't fully passed yet — for a
+    split entry, resolved to the true start/end of the whole thing via
+    group_bounds, not just whichever segment happened to match."""
+    row = get_db().execute(
+        f"SELECT * FROM {table} WHERE status IN ('planned', 'approved') AND end_date >= ? "
+        "ORDER BY start_date ASC LIMIT 1",
+        (date.today().isoformat(),),
+    ).fetchone()
+    if row is None:
+        return None
+    bounds = group_bounds.get(row["group_id"])
+    start_str, end_str = bounds if bounds else (row["start_date"], row["end_date"])
+    start = datetime.strptime(start_str, "%Y-%m-%d").date()
+    end = datetime.strptime(end_str, "%Y-%m-%d").date()
+    return {
+        "note": row["note"],
+        "status": row["status"],
+        "start_display": start.strftime(DISPLAY_DATE_FORMAT),
+        "end_display": end.strftime(DISPLAY_DATE_FORMAT),
+        "single_day": start == end,
+    }
+
+
 @app.route("/")
 @login_required
 def dashboard():
@@ -669,11 +693,16 @@ def dashboard():
     if sick_leave_enabled():
         sick_used = sum(e["days"] for e in _sick_entries_with_days(year))
 
+    next_pto = _next_upcoming_entry("pto_entries", _pto_group_bounds())
+    next_overtime = _next_upcoming_entry("overtime_entries", _overtime_group_bounds())
+
     return render_template(
         "dashboard.html",
         year=year,
         used=used,
         remaining=allowance + carryover - used,
+        next_pto=next_pto,
+        next_overtime=next_overtime,
         upcoming_holidays=upcoming_holidays,
         years=_years_with_data(),
         holiday_state_name=GERMAN_STATES[state],

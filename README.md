@@ -16,7 +16,9 @@ system, no database server, no build step — just Python and SQLite.
 - **An actual dashboard, separate from PTO management.** `/` is a quick
   overview — compact PTO/overtime/sick-leave tiles and upcoming holidays —
   while adding, editing, and browsing PTO entries lives on its own PTO tab,
-  the same way Overtime and Sick Leave already have theirs.
+  the same way Overtime and Sick Leave already have theirs. Both the PTO
+  and Overtime tiles also show the next upcoming not-yet-taken entry, so
+  you don't have to click into Details just to see what's coming up.
 - **German public holidays, computed automatically.** Pick your federal state
   in Settings (defaults to Rheinland-Pfalz) — weekends and that state's
   holidays are excluded automatically when counting days used, for any year,
