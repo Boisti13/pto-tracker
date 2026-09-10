@@ -10,6 +10,9 @@ system, no database server, no build step — just Python and SQLite.
 
 - **Single login.** First visit walks you through creating one admin account
   (hashed password, no config file editing required).
+- **Light or dark, your choice.** Follows your browser/OS setting
+  automatically by default; override it to always-light or always-dark in
+  Settings if you'd rather it not follow the system.
 - **German public holidays, computed automatically.** Pick your federal state
   in Settings (defaults to Rheinland-Pfalz) — weekends and that state's
   holidays are excluded automatically when counting days used, for any year,

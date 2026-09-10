@@ -188,6 +188,13 @@ def inject_nav_flags():
     return {"calendar_enabled": calendar_view_enabled(), "sick_leave_enabled": sick_leave_enabled()}
 
 
+@app.context_processor
+def inject_theme():
+    # Applies even on /login and /setup, before there's a session — dark mode
+    # shouldn't only kick in once you're logged in.
+    return {"theme_preference": get_setting("theme_preference", "auto")}
+
+
 EXTRA_HOLIDAYS = [("dec24", "Heiligabend", 12, 24), ("dec31", "Silvester", 12, 31)]
 
 
@@ -1575,6 +1582,16 @@ def set_holiday_state():
 @login_required
 def set_calendar_view():
     set_setting("calendar_view_enabled", "1" if request.form.get("calendar_view") == "1" else "0")
+    return redirect(url_for("allowance"))
+
+
+@app.route("/settings/theme", methods=["POST"])
+@login_required
+def set_theme():
+    theme = request.form.get("theme", "auto")
+    if theme not in ("auto", "light", "dark"):
+        theme = "auto"
+    set_setting("theme_preference", theme)
     return redirect(url_for("allowance"))
 
 

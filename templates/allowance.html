@@ -2,6 +2,20 @@
 {% block title %}Settings{% endblock %}
 {% block content %}
 <div class="card">
+  <h2>Appearance</h2>
+  <p class="muted">Choose light or dark, or follow your browser/OS setting automatically.</p>
+  <form method="post" action="{{ url_for('set_theme') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label for="theme">Theme</label>
+    <select id="theme" name="theme" onchange="this.form.submit()">
+      <option value="auto" {{ "selected" if theme_preference == "auto" else "" }}>Match system</option>
+      <option value="light" {{ "selected" if theme_preference == "light" else "" }}>Light</option>
+      <option value="dark" {{ "selected" if theme_preference == "dark" else "" }}>Dark</option>
+    </select>
+  </form>
+</div>
+
+<div class="card">
   <h2>Calendar view</h2>
   <p class="muted">Show a month-by-month calendar (in addition to the list view) with PTO, overtime, and holidays marked on it.</p>
   <form method="post" action="{{ url_for('set_calendar_view') }}">
