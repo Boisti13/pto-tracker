@@ -2104,16 +2104,16 @@ def download_backup():
 def check_for_update():
     if APP_VERSION["commit"] is None:
         flash("Not a git checkout — can't check for updates.", "update-error")
-        return redirect(url_for("allowance"))
+        return redirect(url_for("allowance", _anchor="about"))
     branch = APP_VERSION["branch"]
     ok, out = _run_git(["fetch", "origin", branch])
     if not ok:
         flash("Could not reach GitHub to check for updates: " + out[-300:], "update-error")
-        return redirect(url_for("allowance"))
+        return redirect(url_for("allowance", _anchor="about"))
     ok, count_out = _run_git(["rev-list", "--count", f"HEAD..origin/{branch}"])
     if not ok:
         flash("Could not determine update status: " + count_out[-300:], "update-error")
-        return redirect(url_for("allowance"))
+        return redirect(url_for("allowance", _anchor="about"))
     n = int(count_out.strip() or "0")
     if n == 0:
         flash("Already up to date.", "update-success")
@@ -2124,7 +2124,7 @@ def check_for_update():
         if len(titles) > 5:
             summary += " | …"
         flash(f"{n} update{'s' if n != 1 else ''} available on {branch}: {summary}", "update-info")
-    return redirect(url_for("allowance"))
+    return redirect(url_for("allowance", _anchor="about"))
 
 
 def _trigger_restart(is_gunicorn):
@@ -2139,16 +2139,16 @@ def _trigger_restart(is_gunicorn):
 def apply_update():
     if APP_VERSION["commit"] is None:
         flash("Not a git checkout — can't auto-update.", "update-error")
-        return redirect(url_for("allowance"))
+        return redirect(url_for("allowance", _anchor="about"))
     branch = APP_VERSION["branch"]
     ok, out = _run_git(["fetch", "origin", branch])
     if not ok:
         flash("Update failed: could not fetch from GitHub. " + out[-300:], "update-error")
-        return redirect(url_for("allowance"))
+        return redirect(url_for("allowance", _anchor="about"))
     ok, out = _run_git(["reset", "--hard", f"origin/{branch}"])
     if not ok:
         flash("Update failed while resetting to the latest version. " + out[-300:], "update-error")
-        return redirect(url_for("allowance"))
+        return redirect(url_for("allowance", _anchor="about"))
     pip_path = os.path.join(os.path.dirname(sys.executable), "pip")
     try:
         subprocess.run(
@@ -2161,7 +2161,7 @@ def apply_update():
     is_gunicorn = "gunicorn" in request.environ.get("SERVER_SOFTWARE", "").lower()
     flash("Updated — restarting now. Give it a few seconds, then reload.", "update-success")
     threading.Timer(1.0, _trigger_restart, args=(is_gunicorn,)).start()
-    return redirect(url_for("allowance"))
+    return redirect(url_for("allowance", _anchor="about"))
 
 
 def _load_secret_key():
