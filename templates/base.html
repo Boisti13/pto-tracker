@@ -28,7 +28,9 @@
       {% endif %}
     </header>
     {% for category, message in get_flashed_messages(with_categories=true) %}
+    {% if category not in ('update-success', 'update-error', 'update-info') %}
     <div class="{{ 'error' if category == 'error' else 'success' }}">{{ message }}</div>
+    {% endif %}
     {% endfor %}
     {% block content %}{% endblock %}
   </div>

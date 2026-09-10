@@ -12,6 +12,9 @@
   --error-border: #fecaca;
   --success-bg: #f0fdf4;
   --success-border: #bbf7d0;
+  --info: #b45309;
+  --info-bg: #fffbeb;
+  --info-border: #fde68a;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -29,6 +32,9 @@
     --error-border: #7f1d1d;
     --success-bg: #16281d;
     --success-border: #14532d;
+    --info: #fbbf24;
+    --info-bg: #3a2e10;
+    --info-border: #78350f;
   }
 }
 
@@ -46,6 +52,9 @@
   --error-border: #7f1d1d;
   --success-bg: #16281d;
   --success-border: #14532d;
+  --info: #fbbf24;
+  --info-bg: #3a2e10;
+  --info-border: #78350f;
 }
 
 * { box-sizing: border-box; }
@@ -227,6 +236,16 @@ input[type="checkbox"] { width: auto; padding: 0; }
   background: var(--success-bg);
   color: var(--success);
   border: 1px solid var(--success-border);
+  padding: 10px 14px;
+  border-radius: 6px;
+  margin-bottom: 16px;
+  font-size: 0.9rem;
+}
+
+.info {
+  background: var(--info-bg);
+  color: var(--info);
+  border: 1px solid var(--info-border);
   padding: 10px 14px;
   border-radius: 6px;
   margin-bottom: 16px;

@@ -237,6 +237,15 @@
     {% endif %}
   </p>
   {% if app_version.commit %}
+  {% for category, message in get_flashed_messages(with_categories=true) %}
+    {% if category == 'update-error' %}
+    <div class="error" style="margin-top:16px;">{{ message }}</div>
+    {% elif category == 'update-info' %}
+    <div class="info" style="margin-top:16px;">{{ message }}</div>
+    {% elif category == 'update-success' %}
+    <div class="success" style="margin-top:16px;">{{ message }}</div>
+    {% endif %}
+  {% endfor %}
   <div style="margin-top:16px; display:flex; gap:8px; flex-wrap:wrap;">
     <form method="post" action="{{ url_for('check_for_update') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
