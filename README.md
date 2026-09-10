@@ -51,6 +51,12 @@ system, no database server, no build step — just Python and SQLite.
   itself stays LAN-only as before — reaching this feed from outside your
   network is a networking choice you make separately (e.g. a tunnel scoped
   to just this one path), not something the app does for you.
+- **Optional automatic backups.** Turn it on in Settings to keep a rolling
+  set of snapshots on disk — pick how often (every N days) and how many to
+  keep. Runs in the background regardless of whether you have the app open,
+  with a "Back up now" button for an on-demand one and a list of stored
+  backups to download or delete. On top of (not instead of) the manual
+  "Download backup" button, which still works the same as always.
 - **CSV export** for both PTO and overtime entries.
 - Mobile-friendly — usable on a phone down to a 320px-wide screen.
 - No JavaScript framework, no external CDN dependency — works entirely on
@@ -123,9 +129,9 @@ carryover overrides are all managed from the Settings page in the web UI.
   outside your LAN, put it behind a reverse proxy (e.g. Caddy, nginx, or
   Nginx Proxy Manager) with TLS rather than exposing the port directly.
 - **Backups.** Download a full copy of the SQLite file any time from the
-  "Backup" section of Settings (safe to do while the app is running), or
-  back up `data/pto.db` yourself however you like (snapshot, cron `cp`,
-  etc.).
+  "Backup" section of Settings (safe to do while the app is running), turn
+  on automatic backups there too (stored in `data/backups/`), or back up
+  `data/pto.db` yourself however you like (snapshot, cron `cp`, etc.).
 - **Changing the password.** Settings has an in-app "Change password" form
   if you know your current one. If you've forgotten it: stop the service,
   delete the `admin_username` / `admin_password_hash` rows from the

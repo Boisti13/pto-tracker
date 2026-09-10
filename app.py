@@ -1,9 +1,12 @@
 import csv
 import io
 import os
+import re
 import secrets
 import sqlite3
 import tempfile
+import threading
+import time
 import uuid
 from calendar import Calendar, month_name as MONTH_NAMES, monthrange
 from datetime import date, datetime, timedelta, timezone
@@ -116,6 +119,11 @@ def init_db():
             "INSERT INTO settings (key, value) VALUES ('secret_key', ?)",
             (secrets.token_hex(32),),
         )
+        db.commit()
+    if db.execute("SELECT 1 FROM settings WHERE key = 'backup_last_at'").fetchone() is None:
+        # Seeded so the scheduled-backup compare-and-swap always has a row to
+        # work against — see _maybe_run_scheduled_backup.
+        db.execute("INSERT INTO settings (key, value) VALUES ('backup_last_at', '')")
         db.commit()
     db.close()
 
@@ -1254,6 +1262,11 @@ def allowance():
         extra_dec31_enabled=get_extra_holiday_enabled("dec31"),
         ics_enabled=ics_feed_enabled(),
         ics_url=url_for("ics_feed", token=get_ics_token(), _external=True) if ics_feed_enabled() else None,
+        backup_enabled=backup_enabled(),
+        backup_interval_days=get_backup_interval_days(),
+        backup_keep_count=get_backup_keep_count(),
+        backup_last_at_display=_format_backup_last_at(),
+        stored_backups=_list_backups(),
     )
 
 
@@ -1328,6 +1341,176 @@ def change_password():
     return redirect(url_for("allowance"))
 
 
+BACKUP_FILENAME_RE = re.compile(r"^pto-\d{8}-\d{6}\.db$")
+BACKUP_CHECK_INTERVAL_SECONDS = 3600
+
+
+def backup_enabled():
+    return get_setting("backup_enabled", "0") == "1"
+
+
+def get_backup_interval_days():
+    try:
+        return max(1, int(get_setting("backup_interval_days", "1")))
+    except (TypeError, ValueError):
+        return 1
+
+
+def get_backup_keep_count():
+    try:
+        return max(1, int(get_setting("backup_keep_count", "7")))
+    except (TypeError, ValueError):
+        return 7
+
+
+def _backups_dir():
+    d = os.path.join(os.path.dirname(DB_PATH), "backups")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def _create_backup():
+    filename = f"pto-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.db"
+    path = os.path.join(_backups_dir(), filename)
+    src = sqlite3.connect(DB_PATH)
+    dst = sqlite3.connect(path)
+    src.backup(dst)
+    dst.close()
+    src.close()
+    return filename
+
+
+def _prune_backups(keep_count):
+    d = _backups_dir()
+    files = sorted(f for f in os.listdir(d) if BACKUP_FILENAME_RE.match(f))
+    for f in files[: max(0, len(files) - keep_count)]:
+        os.remove(os.path.join(d, f))
+
+
+def _format_backup_size(num_bytes):
+    if num_bytes < 1024:
+        return f"{num_bytes} B"
+    if num_bytes < 1024 * 1024:
+        return f"{num_bytes / 1024:.1f} KB"
+    return f"{num_bytes / (1024 * 1024):.1f} MB"
+
+
+def _list_backups():
+    d = _backups_dir()
+    files = sorted((f for f in os.listdir(d) if BACKUP_FILENAME_RE.match(f)), reverse=True)
+    result = []
+    for f in files:
+        st = os.stat(os.path.join(d, f))
+        result.append(
+            {
+                "filename": f,
+                "display_time": datetime.fromtimestamp(st.st_mtime, timezone.utc).strftime("%d %b %Y, %H:%M UTC"),
+                "display_size": _format_backup_size(st.st_size),
+            }
+        )
+    return result
+
+
+def _format_backup_last_at():
+    raw = get_setting("backup_last_at", "")
+    if not raw:
+        return "never"
+    try:
+        return datetime.fromisoformat(raw).strftime("%d %b %Y, %H:%M UTC")
+    except ValueError:
+        return "never"
+
+
+def _maybe_run_scheduled_backup():
+    """Runs on a background thread in every gunicorn worker — which has no
+    Flask request, so get_setting()/get_db() need an app context pushed
+    explicitly here or they raise "working outside of application context".
+    Whichever worker gets here first when a backup is due "claims" it with a
+    compare-and-swap UPDATE, so multiple workers don't all take one at once."""
+    with app.app_context():
+        if not backup_enabled():
+            return
+        last_at_str = get_setting("backup_last_at", "")
+        now = datetime.now(timezone.utc)
+        if last_at_str:
+            try:
+                last_at = datetime.fromisoformat(last_at_str)
+            except ValueError:
+                last_at = None
+            if last_at and now - last_at < timedelta(days=get_backup_interval_days()):
+                return
+        now_str = now.isoformat()
+        db = sqlite3.connect(DB_PATH)
+        cur = db.execute(
+            "UPDATE settings SET value = ? WHERE key = 'backup_last_at' AND value = ?",
+            (now_str, last_at_str),
+        )
+        claimed = cur.rowcount == 1
+        db.commit()
+        db.close()
+        if not claimed:
+            return
+        _create_backup()
+        _prune_backups(get_backup_keep_count())
+
+
+def _backup_scheduler_loop():
+    time.sleep(60)
+    while True:
+        try:
+            _maybe_run_scheduled_backup()
+        except Exception:
+            pass
+        time.sleep(BACKUP_CHECK_INTERVAL_SECONDS)
+
+
+@app.route("/settings/backup", methods=["POST"])
+@login_required
+def set_backup_settings():
+    set_setting("backup_enabled", "1" if request.form.get("backup_enabled") == "1" else "0")
+    try:
+        interval = max(1, int(request.form.get("backup_interval_days", "1")))
+    except (TypeError, ValueError):
+        interval = 1
+    try:
+        keep = max(1, int(request.form.get("backup_keep_count", "7")))
+    except (TypeError, ValueError):
+        keep = 7
+    set_setting("backup_interval_days", str(interval))
+    set_setting("backup_keep_count", str(keep))
+    return redirect(url_for("allowance"))
+
+
+@app.route("/settings/backup/run", methods=["POST"])
+@login_required
+def run_backup_now():
+    _create_backup()
+    set_setting("backup_last_at", datetime.now(timezone.utc).isoformat())
+    _prune_backups(get_backup_keep_count())
+    return redirect(url_for("allowance"))
+
+
+@app.route("/settings/backup/<filename>/download")
+@login_required
+def download_stored_backup(filename):
+    if not BACKUP_FILENAME_RE.match(filename):
+        abort(404)
+    path = os.path.join(_backups_dir(), filename)
+    if not os.path.isfile(path):
+        abort(404)
+    return send_file(path, as_attachment=True, download_name=filename, mimetype="application/octet-stream")
+
+
+@app.route("/settings/backup/<filename>/delete", methods=["POST"])
+@login_required
+def delete_stored_backup(filename):
+    if BACKUP_FILENAME_RE.match(filename):
+        path = os.path.join(_backups_dir(), filename)
+        if os.path.isfile(path):
+            os.remove(path)
+    return redirect(url_for("allowance"))
+
+
 @app.route("/backup.db")
 @login_required
 def download_backup():
@@ -1357,6 +1540,7 @@ def _load_secret_key():
 
 init_db()
 app.secret_key = _load_secret_key()
+threading.Thread(target=_backup_scheduler_loop, daemon=True).start()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=False)
