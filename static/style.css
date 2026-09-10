@@ -90,6 +90,24 @@ header.topbar {
 }
 .import-row input[type="file"] { width: auto; padding: 4px; }
 
+/* The native file input's own button text (e.g. "Choose file") is rendered
+   by the browser in whatever language it's set to, not by this page — hide
+   it and use a normal styled label instead, so it always reads in English
+   regardless of the visitor's browser locale. */
+.file-input-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.file-label { cursor: pointer; }
+.file-name { font-size: 0.85rem; }
+
 header.topbar h1 {
   font-size: 1.25rem;
   margin: 0;
