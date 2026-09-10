@@ -2145,6 +2145,13 @@ def apply_update():
     if not ok:
         flash("Update failed: could not fetch from GitHub. " + out[-300:], "update-error")
         return redirect(url_for("allowance", _anchor="about"))
+    ok, count_out = _run_git(["rev-list", "--count", f"HEAD..origin/{branch}"])
+    if not ok:
+        flash("Update failed: could not determine update status. " + count_out[-300:], "update-error")
+        return redirect(url_for("allowance", _anchor="about"))
+    if int(count_out.strip() or "0") == 0:
+        flash("Already up to date — nothing to do.", "update-success")
+        return redirect(url_for("allowance", _anchor="about"))
     ok, out = _run_git(["reset", "--hard", f"origin/{branch}"])
     if not ok:
         flash("Update failed while resetting to the latest version. " + out[-300:], "update-error")
