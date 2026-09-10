@@ -44,15 +44,24 @@ def _run_git(args, timeout=30):
         return False, str(e)
 
 
+def _read_version_file():
+    try:
+        with open(os.path.join(APP_DIR, "VERSION")) as f:
+            return f.read().strip() or None
+    except OSError:
+        return None
+
+
 def _get_app_version():
+    version = _read_version_file()
     if not os.path.isdir(os.path.join(APP_DIR, ".git")):
-        return {"branch": None, "commit": None, "message": ""}
+        return {"version": version, "branch": None, "commit": None, "message": ""}
     ok, commit = _run_git(["rev-parse", "--short", "HEAD"])
     if not ok:
-        return {"branch": None, "commit": None, "message": ""}
+        return {"version": version, "branch": None, "commit": None, "message": ""}
     _, branch = _run_git(["rev-parse", "--abbrev-ref", "HEAD"])
     _, message = _run_git(["log", "-1", "--pretty=%s"])
-    return {"branch": branch.strip(), "commit": commit.strip(), "message": message.strip()}
+    return {"version": version, "branch": branch.strip(), "commit": commit.strip(), "message": message.strip()}
 
 
 # Computed once at import time — a gunicorn worker reload (which is how

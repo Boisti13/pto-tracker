@@ -230,9 +230,11 @@
     <a href="https://github.com/Boisti13/pto-tracker" target="_blank" rel="noopener">PTO Tracker on GitHub</a>
   </p>
   <p class="muted" style="margin-top:8px;">
+    {% if app_version.version %}Version <strong>{{ app_version.version }}</strong>{% endif %}
     {% if app_version.commit %}
+    {% if app_version.version %}&middot;{% endif %}
     Running <strong>{{ app_version.branch }}</strong> @ <code>{{ app_version.commit }}</code>{% if app_version.message %} &mdash; {{ app_version.message }}{% endif %}
-    {% else %}
+    {% elif not app_version.version %}
     Not installed from a git checkout &mdash; updates aren't available here.
     {% endif %}
   </p>
