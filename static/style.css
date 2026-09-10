@@ -81,14 +81,25 @@ header.topbar {
   margin-bottom: 12px;
 }
 
+.import-details { margin-bottom: 16px; }
+.import-details > summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.import-panel {
+  margin-top: 10px;
+  padding: 12px;
+  background: var(--bg);
+  border-radius: 8px;
+}
 .import-row {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
-  margin-bottom: 16px;
 }
-.import-row input[type="file"] { width: auto; padding: 4px; }
 
 /* The native file input's own button text (e.g. "Choose file") is rendered
    by the browser in whatever language it's set to, not by this page — hide
